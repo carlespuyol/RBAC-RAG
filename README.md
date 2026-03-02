@@ -85,15 +85,15 @@ make setup
 # Edit .env and add your TOGETHER_API_KEY
 # Leave KAFKA_ENABLED=false for local development
 
-# 3. Start the API
+# 3. Start the server
 make start
-# API: http://localhost:8000
-# Docs: http://localhost:8000/docs
+#  Web UI:  http://localhost:8000          ← open this in your browser
+#  API UI:  http://localhost:8000/docs     ← Swagger / OpenAPI
 
-# 4. Ingest the sample CV
-make ingest FILE=../cv-dataset/David_CV_2026_DS_1.pdf
+# 4. Ingest a CV  (via Web UI → Ingest page, or CLI)
+make ingest FILE=data/sample_cvs/Alice_Johnson_Security_Engineer.pdf
 
-# 5. Query as different roles
+# 5. Query as different roles  (via Web UI → Query page, or CLI)
 make query ROLE=hr_manager QUERY="What is the candidate's contact information?"
 make query ROLE=technical_interviewer QUERY="What is the candidate's contact information?"
 # technical_interviewer should respond: "I don't have information on that topic"
@@ -109,12 +109,31 @@ make infra-up
 
 # In .env, set: KAFKA_ENABLED=true
 
-# Start the API (Kafka consumer starts automatically)
+# Start the server (Kafka consumer starts automatically)
 make start
 
 # Drop a PDF into the watched directory — it will be ingested automatically
-cp ../cv-dataset/David_CV_2026_DS_1.pdf data/incoming_cvs/
+cp data/sample_cvs/Alice_Johnson_Security_Engineer.pdf data/incoming_cvs/
 ```
+
+---
+
+## Web UI
+
+A browser-based interface is served automatically at **http://localhost:8000** when the server starts. It covers all API functionality with no extra setup needed.
+
+| Page | URL hash | Description |
+|---|---|---|
+| Dashboard | `#dashboard` | Live health cards (API, ChromaDB, Kafka), document count, quick-action buttons. Auto-refreshes every 15 s. |
+| Query | `#query` | RBAC-filtered chat — select a role, optional candidate scope, top-k slider. Shows answer with subcategory badges and source accordion. |
+| Ingest | `#ingest` | Drag-and-drop PDF upload with progress bar, result card, and recent ingestions list. |
+| Audit Log | `#audit` | Filterable/sortable table of all queries and ingest events. CSV export and auto-refresh. |
+| RBAC Roles | `#roles` | Full access matrix (11 subcategories × 4 roles), role description cards, reload policies button. |
+| Configuration | `#config` | Runtime config viewer (models, chunk sizes, Kafka mode, key presence). |
+| How to Run | `#howto` | Programmer's guide — setup, start, ingest, query, test, Kafka, stop, env-var reference. |
+| Architecture | `#architecture` | Deep dive — information model, ingestion pipeline, RBAC enforcement mechanism, query sequence, code layer map. |
+
+The UI is pure HTML/CSS/JS served as static files from `ui/`. No build tools or npm required.
 
 ---
 
@@ -158,20 +177,27 @@ Upload a PDF via multipart/form-data.
 ### POST /api/v1/admin/reload-policies
 Hot-reload RBAC policies from `config/rbac_policies.yaml`.
 
+### GET /api/v1/config
+Returns non-sensitive runtime configuration (models, chunk sizes, Kafka mode, audit log path, whether the API key is set).
+
 ---
 
 ## Project Structure
 
 ```
 securerag/
-├── config/                    # YAML policies and settings
+├── config/                    # YAML policies and information model
 ├── src/
 │   ├── rbac/                  # RBAC engine (core security layer)
 │   ├── extraction/            # PDF → classified chunks
 │   ├── embedding/             # Together.ai embeddings + ChromaDB
 │   ├── rag/                   # RAG query pipeline
 │   ├── ingestion/             # Kafka producer/consumer + file watcher
-│   └── api/                   # FastAPI app
+│   └── api/                   # FastAPI app + routes
+├── ui/                        # Web UI (HTML/CSS/JS — no build tools)
+│   ├── index.html             # SPA shell with sidebar navigation
+│   ├── style.css              # Dark-theme design system
+│   └── app.js                 # Hash router + 8 page controllers
 ├── tests/                     # Unit + integration tests
 └── data/                      # ChromaDB persistence + audit log
 ```
@@ -184,11 +210,12 @@ securerag/
 # All tests
 make test
 
-# Unit tests only (no API key needed)
+# Unit tests only — no API key or network needed (covers RBAC, extraction,
+# chunking, pipeline logic, and all 3 sample CVs)
 make test-unit
 
 # Specific test file
-python -m pytest tests/test_rbac_engine.py -v
+.venv/Scripts/python -m pytest tests/test_sample_cvs_pipeline.py -v
 ```
 
 ---

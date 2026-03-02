@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.api.middleware.auth import RoleValidationMiddleware
 from src.api.routes import admin, chat, ingest
@@ -218,12 +220,12 @@ def create_app() -> FastAPI:
 
     @app.get("/")
     async def root():
-        return {
-            "service": "SecureRAG",
-            "version": "1.0.0",
-            "docs": "/docs",
-            "health": "/api/v1/health",
-        }
+        return RedirectResponse(url="/ui/index.html")
+
+    # Serve the UI — mount after routes so /api/v1/* is not shadowed
+    _ui_dir = Path(__file__).parents[2] / "ui"
+    if _ui_dir.exists():
+        app.mount("/ui", StaticFiles(directory=str(_ui_dir), html=True), name="ui")
 
     return app
 

@@ -64,3 +64,23 @@ async def reload_policies(request: Request) -> dict:
     except Exception as e:
         logger.error("Failed to reload policies: %s", e)
         return {"status": "error", "message": str(e)}
+
+
+@router.get("/config")
+async def get_config(request: Request) -> dict:
+    """Return non-sensitive runtime configuration for the UI config page."""
+    import os
+    return {
+        "kafka_enabled": os.getenv("KAFKA_ENABLED", "false").lower() == "true",
+        "chroma_collection": os.getenv("CHROMA_COLLECTION", "cv_chunks"),
+        "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db"),
+        "embedding_model": os.getenv("EMBEDDING_MODEL", "togethercomputer/m2-bert-80M-8k-retrieval"),
+        "llm_model": os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
+        "llm_temperature": float(os.getenv("LLM_TEMPERATURE", "0.3")),
+        "llm_max_tokens": int(os.getenv("LLM_MAX_TOKENS", "1024")),
+        "chunk_size": int(os.getenv("CHUNK_SIZE", "512")),
+        "chunk_overlap": int(os.getenv("CHUNK_OVERLAP", "64")),
+        "together_api_key_set": bool(os.getenv("TOGETHER_API_KEY")),
+        "audit_log_path": os.getenv("AUDIT_LOG_PATH", "./data/audit.jsonl"),
+        "api_version": "1.0.0",
+    }

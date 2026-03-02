@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SecureRAG — RBAC-Enforced HR Intelligence</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header id="header">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      SecureRAG
+    </div>
+    <span class="tagline">RBAC-Enforced HR Intelligence</span>
+    <div class="spacer"></div>
+    <div class="health-indicator" id="header-health">
+      <span class="status-dot grey" id="header-dot"></span>
+      <span id="header-status">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
+  <nav id="sidebar">
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <a class="nav-link" href="#dashboard">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>Dashboard</span>
+      </a>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-section">
+      <div class="nav-label">Pipeline</div>
+      <a class="nav-link" href="#query">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Query</span>
+      </a>
+      <a class="nav-link" href="#ingest">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>Ingest</span>
+      </a>
+      <a class="nav-link" href="#audit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <span>Audit Log</span>
+      </a>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-section">
+      <div class="nav-label">Administration</div>
+      <a class="nav-link" href="#roles">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>RBAC Roles</span>
+      </a>
+      <a class="nav-link" href="#config">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93A10 10 0 0 0 3 10.58M4.93 19.07A10 10 0 0 0 21 13.42"/><path d="m12 2 .5 2.5M12 22l-.5-2.5M2 12l2.5.5M22 12l-2.5-.5M4.22 4.22l1.77 1.77M18 18l1.77 1.77M19.78 4.22l-1.77 1.77M6 18l-1.77 1.77"/></svg>
+        <span>Configuration</span>
+      </a>
+    </div>
+
+    <div class="nav-divider"></div>
+
+    <div class="nav-section">
+      <div class="nav-label">Documentation</div>
+      <a class="nav-link" href="#howto">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>How to Run</span>
+      </a>
+      <a class="nav-link" href="#architecture">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/></svg>
+        <span>Architecture</span>
+      </a>
+    </div>
+
+    <div class="sidebar-footer">SecureRAG v1.0.0</div>
+  </nav>
+
+  <!-- ── Main content ────────────────────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- ── #dashboard ────────────────────────────────────────────────────── -->
+    <div class="page" id="page-dashboard">
+      <div class="page-title">Dashboard</div>
+      <div class="page-subtitle">Service health and system overview — auto-refreshes every 15 s</div>
+
+      <div id="dashboard-services" class="card-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+        <div class="service-card"><span class="status-dot grey" id="svc-api-dot"></span><div class="service-info"><div class="service-name">API Server</div><div class="service-detail">FastAPI · uvicorn</div></div><span class="service-status-text" id="svc-api-txt">–</span></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-db-dot"></span><div class="service-info"><div class="service-name">ChromaDB</div><div class="service-detail" id="svc-db-detail">–</div></div><span class="service-status-text" id="svc-db-txt">–</span></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-kafka-dot"></span><div class="service-info"><div class="service-name">Kafka</div><div class="service-detail">Event pipeline</div></div><span class="service-status-text" id="svc-kafka-txt">–</span></div>
+      </div>
+
+      <div class="card-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+        <div class="stat-card"><div class="stat-value" id="stat-docs">–</div><div class="stat-label">Documents Indexed</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-collection">–</div><div class="stat-label">Collection</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-roles">–</div><div class="stat-label">RBAC Roles</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-version">1.0.0</div><div class="stat-label">API Version</div></div>
+      </div>
+
+      <div class="flex gap-8">
+        <button class="btn btn-primary" onclick="navigate('query')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Run a Query
+        </button>
+        <button class="btn btn-ghost" onclick="navigate('ingest')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Ingest CV
+        </button>
+        <button class="btn btn-ghost" onclick="navigate('audit')">Audit Log</button>
+      </div>
+    </div>
+
+    <!-- ── #query ─────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-query">
+      <div class="page-title">RBAC-Filtered Query</div>
+      <div class="page-subtitle">Select a role and ask anything — only data your role can access will be retrieved</div>
+      <div class="chat-layout">
+        <!-- left: role selector + options -->
+        <div class="chat-panel">
+          <h3>Role</h3>
+          <div id="role-cards"></div>
+          <div class="section-divider"></div>
+          <div class="form-group">
+            <label class="form-label">Candidate ID <span class="text-dim">(optional)</span></label>
+            <input class="form-input" id="q-candidate" placeholder="e.g. alice" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Top-K results: <span id="topk-val">10</span></label>
+            <div class="range-row">
+              <input type="range" id="q-topk" min="1" max="50" value="10"
+                     oninput="document.getElementById('topk-val').textContent=this.value" />
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="clear-chat-btn" onclick="clearChat()">Clear chat</button>
+        </div>
+
+        <!-- right: chat history + input -->
+        <div class="chat-right">
+          <div class="chat-history" id="chat-history">
+            <div class="chat-welcome" id="chat-welcome">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <p>Select a role on the left and type your question below</p>
+            </div>
+          </div>
+          <div id="query-error" class="alert alert-error hidden"></div>
+          <div class="chat-input-row">
+            <textarea class="form-textarea" id="q-input" placeholder="Ask about candidates…" rows="2"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitQuery();}"></textarea>
+            <button class="btn btn-primary" id="q-send" onclick="submitQuery()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── #ingest ────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-ingest">
+      <div class="page-title">Ingest CV</div>
+      <div class="page-subtitle">Upload a PDF to extract, chunk, classify, and store in ChromaDB</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+        <div class="card">
+          <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+            <input type="file" id="file-input" accept="application/pdf" style="display:none" onchange="handleFileSelect(this.files[0])"/>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p><span>Click to browse</span> or drag &amp; drop a PDF here</p>
+          </div>
+          <div class="form-group mt-16">
+            <label class="form-label">Candidate ID</label>
+            <input class="form-input" id="ingest-candidate" placeholder="e.g. alice_johnson" />
+          </div>
+          <div id="ingest-progress-wrap" class="hidden">
+            <div class="progress-wrap mb-8"><div class="progress-bar" id="ingest-progress" style="width:0%"></div></div>
+            <div class="text-sm text-muted" id="ingest-progress-label">Uploading…</div>
+          </div>
+          <button class="btn btn-primary w-full mt-12" id="ingest-btn" onclick="submitIngest()" disabled>
+            Ingest PDF
+          </button>
+        </div>
+
+        <div>
+          <div class="card mb-16" id="ingest-result" style="display:none">
+            <div class="card-title">Result</div>
+            <div id="ingest-result-body"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Recent Ingestions</div>
+            <div id="ingest-recent-list" class="text-muted text-sm">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── #audit ─────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-audit">
+      <div class="page-title">Audit Log</div>
+      <div class="page-subtitle">Full trace of queries and ingest operations</div>
+
+      <div class="flex items-center gap-8 mb-16 flex-wrap">
+        <select class="form-select" id="audit-role-filter" style="width:180px" onchange="renderAudit()">
+          <option value="">All roles</option>
+        </select>
+        <select class="form-select" id="audit-type-filter" style="width:140px" onchange="renderAudit()">
+          <option value="">All types</option>
+          <option value="query">query</option>
+          <option value="ingest">ingest</option>
+        </select>
+        <select class="form-select" id="audit-n" style="width:100px" onchange="loadAudit()">
+          <option value="50">Last 50</option>
+          <option value="100" selected>Last 100</option>
+          <option value="200">Last 200</option>
+        </select>
+        <div class="spacer" style="flex:1"></div>
+        <label class="flex items-center gap-8 text-sm text-muted" style="cursor:pointer">
+          <input type="checkbox" id="audit-auto-refresh" onchange="toggleAuditRefresh(this.checked)" />
+          Auto-refresh (5 s)
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="loadAudit()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="exportAuditCsv()">Export CSV</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Type</th>
+              <th>Role</th>
+              <th>Query / File</th>
+              <th>Candidate</th>
+              <th>Results</th>
+              <th>Latency</th>
+            </tr>
+          </thead>
+          <tbody id="audit-tbody">
+            <tr><td colspan="7" class="empty-state">Loading audit entries…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── #roles ─────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-roles">
+      <div class="page-title">RBAC Policy Explorer</div>
+      <div class="page-subtitle">Access matrix and role definitions loaded from rbac_policies.yaml</div>
+
+      <div class="flex items-center gap-8 mb-16">
+        <button class="btn btn-ghost btn-sm" onclick="reloadPolicies()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Reload Policies
+        </button>
+      </div>
+
+      <div class="card mb-24">
+        <div class="card-title">Access Matrix</div>
+        <div class="flex gap-16 mb-12 flex-wrap text-xs text-muted">
+          <span><span class="matrix-allow">✓</span> Allowed</span>
+          <span><span class="matrix-deny">✗</span> Denied</span>
+          <span style="color:var(--cat-personal)">■ personal_information</span>
+          <span style="color:var(--cat-professional)">■ professional_background</span>
+          <span style="color:var(--cat-education)">■ education</span>
+          <span style="color:var(--cat-compensation)">■ compensation</span>
+          <span style="color:var(--cat-evaluation)">■ evaluation</span>
+        </div>
+        <div class="table-wrap">
+          <table class="matrix-table" id="rbac-matrix"></table>
+        </div>
+      </div>
+
+      <div class="card-grid" id="role-desc-cards"></div>
+    </div>
+
+    <!-- ── #config ────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-config">
+      <div class="page-title">Configuration</div>
+      <div class="page-subtitle">Non-sensitive runtime configuration — set via environment variables or .env</div>
+
+      <div id="config-error" class="alert alert-error hidden"></div>
+
+      <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))" id="config-cards">
+        <div class="card"><div class="text-muted text-sm">Loading configuration…</div></div>
+      </div>
+
+      <div class="mt-24 flex gap-8">
+        <button class="btn btn-ghost btn-sm" onclick="reloadPolicies()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Reload Policies
+        </button>
+        <span class="text-muted text-sm flex items-center gap-8">To change values, edit your <code style="font-size:11px">.env</code> file and restart the server.</span>
+      </div>
+    </div>
+
+    <!-- ── #howto ─────────────────────────────────────────────────────────── -->
+    <div class="page" id="page-howto">
+      <div class="page-title">How to Run</div>
+      <div class="page-subtitle">Programmer's deployment guide — from zero to running query in minutes</div>
+      <div class="doc-page" id="howto-content"><!-- filled by app.js --></div>
+    </div>
+
+    <!-- ── #architecture ─────────────────────────────────────────────────── -->
+    <div class="page" id="page-architecture">
+      <div class="page-title">Architecture Deep Dive</div>
+      <div class="page-subtitle">Internals, RBAC enforcement mechanics, and data flow — every layer explained</div>
+      <div class="doc-page" id="arch-content"><!-- filled by app.js --></div>
+    </div>
+
+  </main><!-- /#main -->
+</div><!-- /#app -->
+
+<div id="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

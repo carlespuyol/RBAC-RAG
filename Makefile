@@ -2,7 +2,7 @@ PYTHON=.venv/Scripts/python
 PYTEST=$(PYTHON) -m pytest
 UVICORN=$(PYTHON) -m uvicorn
 
-.PHONY: help start test ingest query infra-up infra-down infra-logs install setup
+.PHONY: help start test test-unit ingest query infra-up infra-down infra-logs install setup
 
 help:
 	@echo "SecureRAG - RBAC-Enforced RAG Pipeline"
@@ -10,14 +10,17 @@ help:
 	@echo "Usage:"
 	@echo "  make install              Install Python dependencies"
 	@echo "  make setup                Copy .env.example to .env"
-	@echo "  make start                Start the SecureRAG API server"
+	@echo "  make start                Start the API server + Web UI"
 	@echo "  make test                 Run all tests"
-	@echo "  make test-unit            Run unit tests only (no external deps)"
-	@echo "  make ingest FILE=path     Ingest a PDF file"
-	@echo "  make query ROLE=role QUERY='text'  Run a RAG query"
-	@echo "  make infra-up             Start Kafka + ChromaDB via Docker Compose"
+	@echo "  make test-unit            Run unit tests only (no API key needed)"
+	@echo "  make ingest FILE=path     Ingest a PDF file via the API"
+	@echo "  make query ROLE=role QUERY='text'  Run a RAG query via the API"
+	@echo "  make infra-up             Start Kafka via Docker Compose (Kafka mode)"
 	@echo "  make infra-down           Stop Docker infrastructure"
 	@echo "  make infra-logs           Show infrastructure logs"
+	@echo ""
+	@echo "  Web UI:  http://localhost:8000          (dashboard, query, ingest, audit, ...)"
+	@echo "  API UI:  http://localhost:8000/docs     (Swagger / OpenAPI)"
 
 install:
 	python -m venv .venv
@@ -28,15 +31,19 @@ setup:
 	@mkdir -p data/chroma_db data/incoming_cvs data/sample_cvs
 
 start:
-	@echo "Starting SecureRAG API on http://localhost:8000"
-	@echo "API docs: http://localhost:8000/docs"
+	@echo "Starting SecureRAG..."
+	@echo "  Web UI:  http://localhost:8000"
+	@echo "  API UI:  http://localhost:8000/docs"
 	$(UVICORN) src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
 test:
 	$(PYTEST) tests/ -v --tb=short
 
 test-unit:
-	$(PYTEST) tests/test_rbac_engine.py tests/test_filter_builder.py -v --tb=short
+	$(PYTEST) tests/test_rbac_engine.py tests/test_filter_builder.py tests/test_extraction.py \
+	          tests/test_query_pipeline.py tests/test_sample_cvs_extraction.py \
+	          tests/test_sample_cvs_vector_rbac.py tests/test_sample_cvs_pipeline.py \
+	          -v --tb=short
 
 ingest:
 ifndef FILE
