@@ -58,6 +58,25 @@ function showToast(message, type = 'info', duration = 4000) {
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 300ms'; setTimeout(() => toast.remove(), 300); }, duration);
 }
 
+// ── Confirmation modal ───────────────────────────────────────────────────────
+
+function openConfirmModal(title, message, onConfirm) {
+  document.getElementById('confirm-title').textContent   = title;
+  document.getElementById('confirm-message').textContent = message;
+  const btn = document.getElementById('confirm-ok');
+  btn.onclick = () => { closeConfirmModal(); onConfirm(); };
+  document.getElementById('confirm-modal').classList.remove('hidden');
+}
+
+function closeConfirmModal() {
+  document.getElementById('confirm-modal').classList.add('hidden');
+}
+
+// Close on backdrop click
+document.addEventListener('click', e => {
+  if (e.target.id === 'confirm-modal') closeConfirmModal();
+});
+
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 function escHtml(s) {
@@ -140,6 +159,23 @@ window.addEventListener('hashchange', () => {
 });
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
+
+async function promptResetStorage() {
+  openConfirmModal(
+    'Reset Vector Storage',
+    'This will permanently delete ALL indexed documents from ChromaDB. ' +
+    'You will need to re-ingest all CVs. This cannot be undone.',
+    async () => {
+      try {
+        const res = await API.post('/api/v1/admin/reset-storage', {});
+        showToast(`Storage reset: ${res.deleted_count} document(s) deleted`, 'success');
+        refreshDashboard();
+      } catch (e) {
+        showToast('Reset failed: ' + e.message, 'error');
+      }
+    }
+  );
+}
 
 let dashboardTimer = null;
 
@@ -276,6 +312,23 @@ function appendChatBubble(role, text, meta) {
 
   const wrap = document.createElement('div');
   wrap.className = `chat-bubble-wrap ${role}`;
+
+  if (role === 'user') {
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble user';
+    bubble.title = 'Click to copy';
+    bubble.textContent = text;
+    bubble.onclick = () => {
+      navigator.clipboard.writeText(text).then(() => {
+        bubble.classList.add('copied');
+        setTimeout(() => bubble.classList.remove('copied'), 1500);
+      });
+    };
+    wrap.appendChild(bubble);
+    history.appendChild(wrap);
+    history.scrollTop = history.scrollHeight;
+    return;
+  }
 
   let inner = `<div class="chat-bubble ${role}">${escHtml(text)}</div>`;
 
@@ -745,6 +798,158 @@ Get-Process -Id (Get-NetTCPConnection -LocalPort 8000).OwningProcess | Stop-Proc
 
 # or (bash)
 kill $(lsof -ti:8000)`)}
+</div>
+
+<div class="doc-section">
+  <h2>8 — ChromaDB Storage — Inspection &amp; Console</h2>
+  <p>A complete reference for directly inspecting the vector store — every document, filter, metadata field, and index — without going through the SecureRAG API.</p>
+
+  <h3>What is stored</h3>
+  <p>Each ingested PDF chunk is stored as a ChromaDB document with a 768-dim embedding and this metadata:</p>
+  <div class="table-wrap mb-12">
+    <table class="env-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Example</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>candidate_id</td><td>string</td><td>alice</td><td>Candidate scoping in RBAC filter</td></tr>
+        <tr><td>source_file</td><td>string</td><td>Alice_Johnson.pdf</td><td>Traceability back to source PDF</td></tr>
+        <tr><td>category</td><td>string</td><td>professional_background</td><td>Top-level information category</td></tr>
+        <tr><td>subcategory</td><td>string</td><td>skills_and_tools</td><td>RBAC enforcement field (filtered by <code>$in</code>)</td></tr>
+        <tr><td>page_number</td><td>int</td><td>2</td><td>Source page (1-indexed)</td></tr>
+        <tr><td>chunk_index</td><td>int</td><td>7</td><td>Chunk order within the CV (0-indexed)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Default location: <code>securerag/data/chroma_db/</code> &nbsp;|&nbsp; Collection: <code>cv_chunks</code></p>
+
+  <h3>Connect — Python embedded mode (default)</h3>
+  <p>When <code>KAFKA_ENABLED=false</code> and the server runs locally, the database is a set of files on disk. Stop the server first to avoid lock conflicts, then:</p>
+  ${codeBlock(`import chromadb
+
+# Point at the same directory the server uses
+client = chromadb.PersistentClient(path="./data/chroma_db")
+
+# List all collections
+print(client.list_collections())
+# [Collection(name=cv_chunks)]
+
+# Open the collection
+col = client.get_collection("cv_chunks")
+
+# Total document count
+print(col.count())   # e.g. 75
+
+# Get all documents (no embeddings — fast)
+results = col.get(include=["metadatas", "documents"])
+for meta, doc in zip(results["metadatas"], results["documents"]):
+    print(meta, "|", doc[:80])`)}
+
+  <h3>Connect — Python server mode (Docker)</h3>
+  <p>When running via <code>make infra-up</code>, ChromaDB is exposed on port <strong>8001</strong>:</p>
+  ${codeBlock(`import chromadb
+
+client = chromadb.HttpClient(host="localhost", port=8001)
+
+col = client.get_collection("cv_chunks")
+print(col.count())`)}
+
+  <h3>Filter by candidate</h3>
+  ${codeBlock(`# All chunks for Alice
+results = col.get(
+    where={"candidate_id": "alice"},
+    include=["metadatas", "documents"]
+)
+print(f"{len(results['ids'])} chunks for alice")
+
+# All chunks for alice, only compensation subcategories
+results = col.get(
+    where={"$and": [
+        {"candidate_id": "alice"},
+        {"subcategory": {"$in": ["salary_expectation", "current_compensation"]}}
+    ]},
+    include=["metadatas"]
+)
+for m in results["metadatas"]:
+    print(m["subcategory"], m["chunk_index"])`)}
+
+  <h3>Filter by subcategory (RBAC simulation)</h3>
+  ${codeBlock(`# Simulate what technical_interviewer sees (no PII/compensation)
+allowed = ["employment_history", "skills_and_tools",
+           "academic_degrees", "certifications_training", "interview_feedback"]
+
+results = col.get(
+    where={"subcategory": {"$in": allowed}},
+    include=["metadatas"]
+)
+subcats = {m["subcategory"] for m in results["metadatas"]}
+print("Visible subcategories:", subcats)
+
+# Confirm denied subcategories are absent
+assert "identity" not in subcats
+assert "current_compensation" not in subcats`)}
+
+  <h3>Count documents per candidate</h3>
+  ${codeBlock(`from collections import Counter
+
+results = col.get(include=["metadatas"])
+counts = Counter(m["candidate_id"] for m in results["metadatas"])
+for cid, n in counts.most_common():
+    print(f"  {cid}: {n} chunks")`)}
+
+  <h3>List unique subcategory values</h3>
+  ${codeBlock(`results = col.get(include=["metadatas"])
+subcats = sorted({m["subcategory"] for m in results["metadatas"]})
+print("Subcategories in store:", subcats)`)}
+
+  <h3>Spot duplicate ingestions</h3>
+  ${codeBlock(`from collections import Counter
+
+results = col.get(include=["metadatas"])
+files = Counter(m["source_file"] for m in results["metadatas"])
+dupes = {f: n for f, n in files.items() if n > 30}  # >30 chunks = likely re-ingested
+if dupes:
+    print("Possible duplicates:", dupes)`)}
+
+  <h3>HTTP REST API (curl — server mode only)</h3>
+  ${codeBlock(`# List collections
+curl http://localhost:8001/api/v1/collections
+
+# Get collection info (name, count, metadata)
+curl http://localhost:8001/api/v1/collections/cv_chunks
+
+# Get documents with a where filter (paginated)
+curl -X POST http://localhost:8001/api/v1/collections/cv_chunks/get \\
+  -H "Content-Type: application/json" \\
+  -d '{"where": {"candidate_id": "alice"}, "include": ["metadatas", "documents"], "limit": 20}'
+
+# Count matching a filter
+curl -X POST http://localhost:8001/api/v1/collections/cv_chunks/count \\
+  -H "Content-Type: application/json" \\
+  -d '{"where": {"subcategory": "skills_and_tools"}}'`)}
+
+  <h3>ChromaDB built-in web UI (Docker only)</h3>
+  <p>When running via <code>make infra-up</code>, the ChromaDB Docker image includes a minimal REST browser accessible at <a href="http://localhost:8001" target="_blank">http://localhost:8001</a>. It shows:</p>
+  <ul>
+    <li>All collections with document count</li>
+    <li>Collection detail — peek at raw documents</li>
+    <li>Basic query interface for semantic search</li>
+  </ul>
+  ${codeBlock(`# Start the Docker infrastructure (Kafka + ChromaDB)
+make infra-up
+
+# Then open in browser:
+# http://localhost:8001`)}
+
+  <h3>Indexes</h3>
+  <p>ChromaDB uses <strong>HNSW</strong> (Hierarchical Navigable Small World graph) for ANN (approximate nearest-neighbour) vector search. It is created automatically on first insert.</p>
+  ${codeBlock(`# Inspect HNSW index configuration
+col = client.get_collection("cv_chunks")
+print(col.metadata)
+# {'hnsw:space': 'l2', 'hnsw:construction_ef': 100, 'hnsw:M': 16, ...}
+
+# The metadata filter (subcategory $in [...]) is NOT indexed — it uses a
+# brute-force scan over the pre-filtered candidate set.
+# For ~10k documents this is fast (<5 ms). For >1M documents, consider
+# partitioning by candidate_id into separate collections.`)}
 </div>
 
 <div class="doc-section">

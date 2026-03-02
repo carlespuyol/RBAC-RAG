@@ -30,6 +30,7 @@ class CVKafkaProducer:
                         "acks": "all",
                         "enable.idempotence": True,
                         "retries": 3,
+                        "log_level": 3,  # ERROR only — suppress rdkafka startup warnings
                     }
                 )
                 logger.info("Kafka producer connected to %s", bootstrap_servers)

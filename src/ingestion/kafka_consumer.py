@@ -79,7 +79,15 @@ class CVKafkaConsumer:
                 if msg is None:
                     continue
                 if msg.error():
-                    if msg.error().code() != KafkaError._PARTITION_EOF:
+                    code = msg.error().code()
+                    if code == KafkaError._PARTITION_EOF:
+                        pass  # normal end-of-partition, ignore
+                    elif code == KafkaError.UNKNOWN_TOPIC_OR_PART:
+                        logger.warning(
+                            "Topic not yet available (will be created on first ingest): %s",
+                            msg.error(),
+                        )
+                    else:
                         logger.error("Consumer error: %s", msg.error())
                     continue
 

@@ -15,12 +15,14 @@ help:
 	@echo "  make test-unit            Run unit tests only (no API key needed)"
 	@echo "  make ingest FILE=path     Ingest a PDF file via the API"
 	@echo "  make query ROLE=role QUERY='text'  Run a RAG query via the API"
-	@echo "  make infra-up             Start Kafka via Docker Compose (Kafka mode)"
-	@echo "  make infra-down           Stop Docker infrastructure"
+	@echo "  make infra-up             Start Kafka + ChromaDB + management UIs via Docker"
+	@echo "  make infra-down           Stop all Docker infrastructure"
 	@echo "  make infra-logs           Show infrastructure logs"
 	@echo ""
-	@echo "  Web UI:  http://localhost:8000          (dashboard, query, ingest, audit, ...)"
-	@echo "  API UI:  http://localhost:8000/docs     (Swagger / OpenAPI)"
+	@echo "  SecureRAG Web UI:  http://localhost:8000          (dashboard, query, ingest, ...)"
+	@echo "  SecureRAG API UI:  http://localhost:8000/docs     (Swagger / OpenAPI)"
+	@echo "  Kafka UI:          http://localhost:8090          (topics, messages, consumers)"
+	@echo "  ChromaDB REST UI:  http://localhost:8001/docs     (vector store API + Swagger)"
 
 install:
 	python -m venv .venv
@@ -72,10 +74,9 @@ print('Chunks retrieved:', data.get('chunks_retrieved', 0)); \
 print('Subcategories accessed:', data.get('allowed_subcategories', []))"
 
 infra-up:
-	docker compose up -d zookeeper kafka chromadb
-	@echo "Waiting for services..."
-	@sleep 10
-	@echo "Kafka UI available (with monitoring profile): docker compose --profile monitoring up -d"
+	docker compose --profile monitoring up -d zookeeper kafka chromadb kafka-ui
+	@echo "  Kafka UI:          http://localhost:8090"
+	@echo "  ChromaDB REST UI:  http://localhost:8001/docs"
 
 infra-down:
 	docker compose down

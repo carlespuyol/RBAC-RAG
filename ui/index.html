@@ -91,9 +91,9 @@
       <div class="page-subtitle">Service health and system overview — auto-refreshes every 15 s</div>
 
       <div id="dashboard-services" class="card-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
-        <div class="service-card"><span class="status-dot grey" id="svc-api-dot"></span><div class="service-info"><div class="service-name">API Server</div><div class="service-detail">FastAPI · uvicorn</div></div><span class="service-status-text" id="svc-api-txt">–</span></div>
-        <div class="service-card"><span class="status-dot grey" id="svc-db-dot"></span><div class="service-info"><div class="service-name">ChromaDB</div><div class="service-detail" id="svc-db-detail">–</div></div><span class="service-status-text" id="svc-db-txt">–</span></div>
-        <div class="service-card"><span class="status-dot grey" id="svc-kafka-dot"></span><div class="service-info"><div class="service-name">Kafka</div><div class="service-detail">Event pipeline</div></div><span class="service-status-text" id="svc-kafka-txt">–</span></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-api-dot"></span><div class="service-info"><div class="service-name">API Server</div><div class="service-detail">FastAPI · uvicorn</div></div><span class="service-status-text" id="svc-api-txt">–</span><a class="svc-link" href="http://localhost:8000/docs" target="_blank" rel="noopener" title="Open Swagger UI"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-db-dot"></span><div class="service-info"><div class="service-name">ChromaDB</div><div class="service-detail" id="svc-db-detail">–</div></div><span class="service-status-text" id="svc-db-txt">–</span><a class="svc-link" href="http://localhost:8001/docs" target="_blank" rel="noopener" title="Open ChromaDB REST API (Docker only)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-kafka-dot"></span><div class="service-info"><div class="service-name">Kafka</div><div class="service-detail">Event pipeline</div></div><span class="service-status-text" id="svc-kafka-txt">–</span><a class="svc-link" href="http://localhost:8090" target="_blank" rel="noopener" title="Open Kafka UI (Docker only)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
       </div>
 
       <div class="card-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
@@ -113,6 +113,22 @@
           Ingest CV
         </button>
         <button class="btn btn-ghost" onclick="navigate('audit')">Audit Log</button>
+      </div>
+
+      <div class="card mt-24" style="border-color:var(--color-error)">
+        <div class="card-title" style="color:var(--color-error)">Danger Zone</div>
+        <div class="flex items-center justify-between gap-16">
+          <div>
+            <div class="font-bold text-sm">Reset Vector Storage</div>
+            <div class="text-muted text-sm mt-4">
+              Permanently delete all indexed documents from ChromaDB.
+              Cannot be undone — you will need to re-ingest all CVs.
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" style="flex-shrink:0" onclick="promptResetStorage()">
+            Reset Storage
+          </button>
+        </div>
       </div>
     </div>
 
@@ -316,6 +332,17 @@
 
   </main><!-- /#main -->
 </div><!-- /#app -->
+
+<div class="modal-overlay hidden" id="confirm-modal">
+  <div class="modal">
+    <div class="modal-title danger" id="confirm-title">Confirm Action</div>
+    <p id="confirm-message">Are you sure?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
 
 <div id="toast-container"></div>
 

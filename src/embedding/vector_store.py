@@ -28,6 +28,11 @@ class VectorStore:
         self._store = self._init_store(embeddings)
 
     def _init_store(self, embeddings: Any) -> Any:
+        import logging
+        # chromadb's posthog telemetry has a version mismatch with the installed
+        # posthog SDK — silence it so startup logs are clean.
+        logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+
         from langchain_chroma import Chroma
 
         store = Chroma(
@@ -94,6 +99,16 @@ class VectorStore:
         """Remove all chunks for a specific candidate (e.g., for re-ingestion)."""
         self._store._collection.delete(where={"candidate_id": candidate_id})
         logger.info("Deleted all chunks for candidate_id='%s'", candidate_id)
+
+    def reset_collection(self) -> int:
+        """Delete every document in the collection. Returns the count that was deleted."""
+        count = self.get_document_count()
+        if count > 0:
+            all_ids = self._store._collection.get(include=[])["ids"]
+            if all_ids:
+                self._store._collection.delete(ids=all_ids)
+        logger.info("Reset collection '%s': deleted %d documents", self.collection_name, count)
+        return count
 
     def get_collection_stats(self) -> dict:
         """Return basic collection statistics."""

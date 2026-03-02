@@ -66,6 +66,24 @@ async def reload_policies(request: Request) -> dict:
         return {"status": "error", "message": str(e)}
 
 
+@router.post("/admin/reset-storage")
+async def reset_storage(request: Request) -> dict:
+    """Delete all documents from the vector store. Irreversible."""
+    vector_store = request.app.state.vector_store
+    audit_logger = request.app.state.audit_logger
+    deleted = vector_store.reset_collection()
+    audit_logger.log_ingest(
+        candidate_id="__reset__",
+        source_file="reset_storage",
+        chunk_count=-deleted,
+    )
+    return {
+        "status": "ok",
+        "deleted_count": deleted,
+        "message": f"Deleted {deleted} documents from the vector store.",
+    }
+
+
 @router.get("/config")
 async def get_config(request: Request) -> dict:
     """Return non-sensitive runtime configuration for the UI config page."""

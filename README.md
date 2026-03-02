@@ -87,7 +87,7 @@ make setup
 
 # 3. Start the server
 make start
-#  Web UI:  http://localhost:8000          ← open this in your browser
+#  Web UI:  http://localhost:8000          ← SecureRAG dashboard (open this)
 #  API UI:  http://localhost:8000/docs     ← Swagger / OpenAPI
 
 # 4. Ingest a CV  (via Web UI → Ingest page, or CLI)
@@ -104,8 +104,10 @@ make query ROLE=technical_interviewer QUERY="What is the candidate's contact inf
 ## Quick Start (With Kafka)
 
 ```bash
-# Start Kafka + ChromaDB
+# Start Kafka + ChromaDB + management UIs
 make infra-up
+#  Kafka UI:          http://localhost:8090   ← browse topics, messages, consumer groups
+#  ChromaDB REST UI:  http://localhost:8001/docs  ← vector store Swagger
 
 # In .env, set: KAFKA_ENABLED=true
 
@@ -115,6 +117,60 @@ make start
 # Drop a PDF into the watched directory — it will be ingested automatically
 cp data/sample_cvs/Alice_Johnson_Security_Engineer.pdf data/incoming_cvs/
 ```
+
+---
+
+## Management UIs
+
+When running with Docker (`make infra-up`), two additional management interfaces become available:
+
+### Kafka UI — `http://localhost:8090`
+
+A full-featured web dashboard for the Kafka broker (`provectuslabs/kafka-ui`).
+
+| Feature | Description |
+|---|---|
+| **Topics** | Browse `cv.raw.intake` and other topics; inspect partitions, offsets, retention |
+| **Messages** | Read individual messages by offset, filter by key, view JSON payloads |
+| **Consumer Groups** | See consumer lag — know if the SecureRAG consumer is keeping up |
+| **Brokers** | Broker health, JVM stats, partition leaders |
+| **Producers** | Send test messages directly from the UI |
+
+No login required in development mode. Start with `make infra-up`.
+
+---
+
+### ChromaDB REST API — `http://localhost:8001`
+
+ChromaDB (in Docker server mode) exposes a **FastAPI-based REST API** on port 8001. There is no separate visual browser — the interface is the API itself, accessible via:
+
+**Swagger UI** at `http://localhost:8001/docs` — interactive explorer for every ChromaDB endpoint:
+
+| Endpoint | What it does |
+|---|---|
+| `GET /api/v1/collections` | List all collections (e.g. `cv_chunks`) |
+| `GET /api/v1/collections/{name}/count` | Number of documents in a collection |
+| `POST /api/v1/collections/{name}/get` | Fetch documents with optional `where` metadata filter |
+| `POST /api/v1/collections/{name}/query` | Nearest-neighbour search with an embedding vector |
+| `DELETE /api/v1/collections/{name}` | Drop a collection |
+
+**Example: fetch all documents for a candidate via curl**
+```bash
+curl -s -X POST http://localhost:8001/api/v1/collections/cv_chunks/get \
+  -H "Content-Type: application/json" \
+  -d '{"where": {"candidate_id": "Alice_Johnson"}, "include": ["metadatas","documents"]}' \
+  | python -m json.tool
+```
+
+**Example: filter by subcategory (simulate an RBAC query)**
+```bash
+curl -s -X POST http://localhost:8001/api/v1/collections/cv_chunks/get \
+  -H "Content-Type: application/json" \
+  -d '{"where": {"subcategory": {"$in": ["skills_and_tools","employment_history"]}}, "include": ["metadatas"]}' \
+  | python -m json.tool
+```
+
+> **Note:** When running *without* Docker (the default no-Kafka mode), ChromaDB runs embedded inside the Python process — port 8001 is not open. Use the Python client or the SecureRAG API instead. The full ChromaDB inspection guide is in the **How to Run** page of the Web UI (`#howto`).
 
 ---
 
@@ -251,5 +307,5 @@ This means the LLM cannot leak unauthorized data even if prompted to do so — i
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka broker address |
 | `CHROMA_PERSIST_DIR` | `./data/chroma_db` | ChromaDB storage path |
 | `CHROMA_COLLECTION` | `cv_chunks` | ChromaDB collection name |
-| `EMBEDDING_MODEL` | `togethercomputer/m2-bert-80M-8k-retrieval` | Together.ai embedding model |
-| `LLM_MODEL` | `meta-llama/Llama-3.1-8B-Instruct` | Together.ai LLM model |
+| `EMBEDDING_MODEL` | `intfloat/multilingual-e5-large-instruct` | Together.ai embedding model (serverless) |
+| `LLM_MODEL` | `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` | Together.ai LLM model (serverless) |
