@@ -1,0 +1,41 @@
+together_ai:
+  base_url: "https://api.together.xyz/v1"
+  embedding_model: "togethercomputer/m2-bert-80M-8k-retrieval"
+  embedding_fallback_model: "BAAI/bge-base-en-v1.5"
+  llm_model: "meta-llama/Llama-3.1-8B-Instruct"
+  llm_fallback_model: "mistralai/Mistral-7B-Instruct-v0.3"
+  temperature: 0.3
+  max_tokens: 1024
+  embedding_batch_size: 32
+  retry_attempts: 3
+  retry_delay_seconds: 1
+
+chroma:
+  persist_directory: "./data/chroma_db"
+  collection_name: "cv_chunks"
+  n_results: 10
+
+chunking:
+  chunk_size: 512
+  chunk_overlap: 64
+  separators:
+    - "\n\n"
+    - "\n"
+    - ". "
+    - " "
+    - ""
+
+kafka:
+  enabled: false   # Override with KAFKA_ENABLED env var
+  watch_directory: "./data/incoming_cvs"
+  fallback_direct_ingest: true
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  title: "SecureRAG API"
+  version: "1.0.0"
+
+audit:
+  log_path: "./data/audit.jsonl"
+  max_recent_entries: 1000

@@ -1,0 +1,57 @@
+policy_version: "1.0"
+default_action: deny
+
+roles:
+  hr_manager:
+    description: "Full access to all candidate data for hiring decisions"
+    allow:
+      - "*"   # Wildcard: all subcategories
+    deny: []
+
+  technical_interviewer:
+    description: "Access to evaluate technical fit, no PII or compensation data"
+    allow:
+      - employment_history
+      - skills_and_tools
+      - academic_degrees
+      - certifications_training
+      - interview_feedback
+    deny:
+      - identity
+      - contact_details
+      - salary_expectation
+      - current_compensation
+      - references
+      - recruiter_notes
+
+  finance_analyst:
+    description: "Access to compensation data for budget planning"
+    allow:
+      - identity
+      - salary_expectation
+      - current_compensation
+    deny:
+      - contact_details
+      - employment_history
+      - skills_and_tools
+      - references
+      - academic_degrees
+      - certifications_training
+      - recruiter_notes
+      - interview_feedback
+
+  recruiter:
+    description: "Screening access, no internal evaluations or current compensation"
+    allow:
+      - identity
+      - contact_details
+      - employment_history
+      - skills_and_tools
+      - academic_degrees
+      - certifications_training
+      - salary_expectation
+    deny:
+      - current_compensation
+      - references
+      - recruiter_notes
+      - interview_feedback

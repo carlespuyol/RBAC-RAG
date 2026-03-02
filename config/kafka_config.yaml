@@ -1,0 +1,30 @@
+bootstrap_servers: "localhost:9092"
+
+topics:
+  raw_intake:
+    name: "cv.raw.intake"
+    partitions: 3
+    replication_factor: 1
+  extracted_chunks:
+    name: "cv.extracted.chunks"
+    partitions: 3
+    replication_factor: 1
+  processing_status:
+    name: "cv.processing.status"
+    partitions: 1
+    replication_factor: 1
+  dead_letter_queue:
+    name: "cv.dlq"
+    partitions: 1
+    replication_factor: 1
+
+producer:
+  acks: "all"
+  enable_idempotence: true
+  retries: 3
+
+consumer:
+  group_id: "securerag-consumer"
+  auto_offset_reset: "earliest"
+  enable_auto_commit: false
+  max_poll_interval_ms: 300000
