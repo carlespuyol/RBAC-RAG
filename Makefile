@@ -15,7 +15,7 @@ help:
 	@echo "  make test-unit            Run unit tests only (no API key needed)"
 	@echo "  make ingest FILE=path     Ingest a PDF file via the API"
 	@echo "  make query ROLE=role QUERY='text'  Run a RAG query via the API"
-	@echo "  make infra-up             Start Kafka + ChromaDB + management UIs via Docker"
+	@echo "  make infra-up             Start Kafka + ChromaDB + Langfuse + UIs via Docker"
 	@echo "  make infra-down           Stop all Docker infrastructure"
 	@echo "  make infra-logs           Show infrastructure logs"
 	@echo ""
@@ -23,6 +23,7 @@ help:
 	@echo "  SecureRAG API UI:  http://localhost:8000/docs     (Swagger / OpenAPI)"
 	@echo "  Kafka UI:          http://localhost:8090          (topics, messages, consumers)"
 	@echo "  ChromaDB REST UI:  http://localhost:8001/docs     (vector store API + Swagger)"
+	@echo "  Langfuse UI:       http://localhost:30013         (LLM + RAG tracing)"
 
 install:
 	python -m venv .venv
@@ -74,12 +75,13 @@ print('Chunks retrieved:', data.get('chunks_retrieved', 0)); \
 print('Subcategories accessed:', data.get('allowed_subcategories', []))"
 
 infra-up:
-	docker compose --profile monitoring up -d zookeeper kafka chromadb kafka-ui
+	docker compose --profile monitoring up -d
 	@echo "  Kafka UI:          http://localhost:8090"
 	@echo "  ChromaDB REST UI:  http://localhost:8001/docs"
+	@echo "  Langfuse UI:       http://localhost:30013"
 
 infra-down:
-	docker compose down
+	docker compose --profile monitoring down
 
 infra-logs:
 	docker compose logs -f

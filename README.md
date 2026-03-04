@@ -174,6 +174,40 @@ curl -s -X POST http://localhost:8001/api/v1/collections/cv_chunks/get \
 
 ---
 
+### Langfuse UI — `http://localhost:30013`
+
+SecureRAG instruments every LLM call, every ChromaDB retrieval, and every chunk classification with [Langfuse](https://langfuse.com) traces. Start it with `make infra-up`.
+
+**Setup:**
+
+```bash
+# 1. Start infrastructure (includes Langfuse)
+make infra-up
+
+# 2. Open http://localhost:30013 → create an account → create a project → copy the API keys
+
+# 3. Add to .env
+LANGFUSE_PUBLIC_KEY=pk-lf-...
+LANGFUSE_SECRET_KEY=sk-lf-...
+LANGFUSE_HOST=http://localhost:30013
+
+# 4. Restart the server
+make start
+```
+
+Tracing is silently disabled when keys are absent — all other functionality is unaffected.
+
+**Trace hierarchy:**
+
+| Trace | Child spans |
+|---|---|
+| `ingest.pipeline` | `ingest.pdf_extract` → `ingest.chunk` → `ingest.classify` (+ N `ingest.classify_chunk` generations with actual chunk text) → `vectorstore.add` |
+| `rag.query` | `rbac.resolve` → `rbac.build_filter` → `vectorstore.retrieve` (chunk previews) → `llm.generate` (full prompt + token counts via LangChain) |
+
+Every `ingest.classify_chunk` generation shows the actual CV chunk text as input and `{category, subcategory}` as output. Every `vectorstore.retrieve` span shows all retrieved chunks with 200-character previews.
+
+---
+
 ## Web UI
 
 A browser-based interface is served automatically at **http://localhost:8000** when the server starts. It covers all API functionality with no extra setup needed.
@@ -309,3 +343,6 @@ This means the LLM cannot leak unauthorized data even if prompted to do so — i
 | `CHROMA_COLLECTION` | `cv_chunks` | ChromaDB collection name |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-large-instruct` | Together.ai embedding model (serverless) |
 | `LLM_MODEL` | `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` | Together.ai LLM model (serverless) |
+| `LANGFUSE_PUBLIC_KEY` | — | Langfuse project public key (tracing disabled if absent) |
+| `LANGFUSE_SECRET_KEY` | — | Langfuse project secret key |
+| `LANGFUSE_HOST` | `http://localhost:30013` | Langfuse server URL |

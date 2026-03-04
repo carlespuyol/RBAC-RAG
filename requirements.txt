@@ -35,6 +35,9 @@ watchdog==6.0.0
 # HTTP client (for tests + Makefile query)
 httpx==0.28.1
 
+# Observability
+langfuse>=2.7.0,<3.0.0
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.25.2

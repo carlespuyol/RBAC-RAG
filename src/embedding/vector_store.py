@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 from langchain_core.documents import Document
 
+from src.monitoring.langfuse_client import langfuse_context, observe
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,11 +49,31 @@ class VectorStore:
         )
         return store
 
+    @observe(name="vectorstore.add", as_type="span")
     def add_documents(self, documents: list[Document]) -> list[str]:
         """
         Add classified chunks to the vector store.
         Each document MUST have category + subcategory in metadata for RBAC to work.
         """
+        langfuse_context.update_current_observation(
+            input={
+                "doc_count": len(documents),
+                "collection": self.collection_name,
+                "documents": [
+                    {
+                        "chunk_index": d.metadata.get("chunk_index"),
+                        "candidate_id": d.metadata.get("candidate_id"),
+                        "category": d.metadata.get("category"),
+                        "subcategory": d.metadata.get("subcategory"),
+                        "page": d.metadata.get("page"),
+                        "source_file": d.metadata.get("source_file"),
+                        "content": d.page_content,
+                    }
+                    for d in documents
+                ],
+            }
+        )
+
         # Validate required metadata fields
         for doc in documents:
             if "subcategory" not in doc.metadata:
@@ -62,6 +84,9 @@ class VectorStore:
 
         ids = self._store.add_documents(documents)
         logger.info("Added %d documents to ChromaDB collection '%s'", len(documents), self.collection_name)
+        langfuse_context.update_current_observation(
+            output={"stored_count": len(ids), "collection": self.collection_name}
+        )
         return ids
 
     def get_retriever(self, role_filter: dict, k: int = 10) -> Any:

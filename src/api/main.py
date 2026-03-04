@@ -22,6 +22,7 @@ from src.models.information_model import load_information_model
 from src.rag.context_assembler import ContextAssembler
 from src.rag.llm_service import LLMService
 from src.rag.query_pipeline import QueryPipeline
+from src.monitoring.langfuse_client import flush as _langfuse_flush, setup_langfuse
 from src.rbac.audit_logger import AuditLogger
 from src.rbac.filter_builder import FilterBuilder
 from src.rbac.policy_engine import PolicyEngine
@@ -51,8 +52,13 @@ def build_direct_ingest_fn(
     Returns a callable used for synchronous PDF ingestion (Kafka fallback mode).
     Callable signature: (file_path: str, candidate_id: str) -> int (chunk_count)
     """
+    from src.monitoring.langfuse_client import langfuse_context, observe
 
+    @observe(name="ingest.pipeline")
     def ingest(file_path: str, candidate_id: str) -> int:
+        langfuse_context.update_current_observation(
+            input={"candidate_id": candidate_id, "source_file": Path(file_path).name}
+        )
         docs = extractor.extract(file_path, candidate_id=candidate_id)
         chunks = chunker.split(docs)
         classified = classifier.classify_chunks(chunks)
@@ -63,6 +69,7 @@ def build_direct_ingest_fn(
             chunk_count=len(ids),
         )
         logger.info("Ingested %d chunks for candidate '%s'", len(ids), candidate_id)
+        langfuse_context.update_current_observation(output={"chunk_count": len(ids)})
         return len(ids)
 
     return ingest
@@ -79,6 +86,8 @@ async def lifespan(app: FastAPI):
         load_dotenv()
     except ImportError:
         pass
+
+    setup_langfuse()
 
     api_key = _get_env("TOGETHER_API_KEY")
     kafka_enabled = os.environ.get("KAFKA_ENABLED", "false").lower() == "true"
@@ -177,6 +186,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down SecureRAG...")
     consumer.stop()
+    _langfuse_flush()
 
 
 def create_app() -> FastAPI:

@@ -5,6 +5,8 @@ import logging
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from src.monitoring.langfuse_client import langfuse_context, observe
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,6 +27,7 @@ class CVChunker:
             add_start_index=True,
         )
 
+    @observe(name="ingest.chunk", as_type="span")
     def split(self, documents: list[Document]) -> list[Document]:
         """
         Split a list of page Documents into smaller chunks.
@@ -32,6 +35,11 @@ class CVChunker:
         """
         if not documents:
             return []
+
+        candidate_id = documents[0].metadata.get("candidate_id", "unknown")
+        langfuse_context.update_current_observation(
+            input={"input_pages": len(documents), "candidate_id": candidate_id}
+        )
 
         chunks = self.splitter.split_documents(documents)
 
@@ -43,6 +51,20 @@ class CVChunker:
             "Chunked %d pages into %d chunks (candidate_id=%s)",
             len(documents),
             len(chunks),
-            documents[0].metadata.get("candidate_id", "unknown"),
+            candidate_id,
+        )
+        langfuse_context.update_current_observation(
+            output={
+                "output_chunks": len(chunks),
+                "chunks": [
+                    {
+                        "chunk_index": c.metadata.get("chunk_index"),
+                        "page": c.metadata.get("page"),
+                        "start_index": c.metadata.get("start_index"),
+                        "content": c.page_content,
+                    }
+                    for c in chunks
+                ],
+            }
         )
         return chunks

@@ -61,5 +61,42 @@ services:
     profiles:
       - monitoring
 
+  langfuse-server:
+    image: langfuse/langfuse:2
+    container_name: securerag-langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "30013:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: securerag-nextauth-secret-change-me
+      SALT: securerag-salt-value-change-me
+      NEXTAUTH_URL: http://localhost:30013
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "true"
+      LANGFUSE_LOG_LEVEL: warn
+    profiles:
+      - monitoring
+
+  langfuse-db:
+    image: postgres:15-alpine
+    container_name: securerag-langfuse-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - monitoring
+
 volumes:
   chroma_data:
+  langfuse_postgres:
