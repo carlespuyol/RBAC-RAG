@@ -28,9 +28,9 @@ def test_empty_list_produces_deny_all():
 
 
 def test_single_subcategory_produces_exact_match():
-    """Single subcategory should use direct string match, not $in list."""
+    """Single subcategory should use $eq match for Pinecone compatibility."""
     result = FilterBuilder.build(["employment_history"])
-    assert result == {"subcategory": "employment_history"}
+    assert result == {"subcategory": {"$eq": "employment_history"}}
 
 
 def test_multiple_subcategories_produces_in_filter():
@@ -76,14 +76,14 @@ def test_build_candidate_filter_with_single_subcategory():
     result = FilterBuilder.build_candidate_filter(["skills_and_tools"], "cand_001")
     assert "$and" in result
     conditions = result["$and"]
-    assert any(c == {"subcategory": "skills_and_tools"} for c in conditions)
-    assert any(c == {"candidate_id": "cand_001"} for c in conditions)
+    assert any(c == {"subcategory": {"$eq": "skills_and_tools"}} for c in conditions)
+    assert any(c == {"candidate_id": {"$eq": "cand_001"}} for c in conditions)
 
 
 def test_build_candidate_filter_with_wildcard():
     """When all subcategories allowed and scoped to candidate, just filter by candidate."""
     result = FilterBuilder.build_candidate_filter(ALL_SUBCATEGORIES, "cand_001")
-    assert result == {"candidate_id": "cand_001"}
+    assert result == {"candidate_id": {"$eq": "cand_001"}}
 
 
 def test_build_candidate_filter_deny_all():

@@ -92,7 +92,7 @@
 
       <div id="dashboard-services" class="card-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
         <div class="service-card"><span class="status-dot grey" id="svc-api-dot"></span><div class="service-info"><div class="service-name">API Server</div><div class="service-detail">FastAPI · uvicorn</div></div><span class="service-status-text" id="svc-api-txt">–</span><a class="svc-link" href="http://localhost:8000/docs" target="_blank" rel="noopener" title="Open Swagger UI"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
-        <div class="service-card"><span class="status-dot grey" id="svc-db-dot"></span><div class="service-info"><div class="service-name">ChromaDB</div><div class="service-detail" id="svc-db-detail">–</div></div><span class="service-status-text" id="svc-db-txt">–</span><a class="svc-link" href="http://localhost:8001/docs" target="_blank" rel="noopener" title="Open ChromaDB REST API (Docker only)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+        <div class="service-card"><span class="status-dot grey" id="svc-db-dot"></span><div class="service-info"><div class="service-name">Pinecone</div><div class="service-detail" id="svc-db-detail">–</div></div><span class="service-status-text" id="svc-db-txt">–</span><a class="svc-link" href="https://app.pinecone.io" target="_blank" rel="noopener" title="Open Pinecone Console"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
         <div class="service-card"><span class="status-dot grey" id="svc-kafka-dot"></span><div class="service-info"><div class="service-name">Kafka</div><div class="service-detail">Event pipeline</div></div><span class="service-status-text" id="svc-kafka-txt">–</span><a class="svc-link" href="http://localhost:8090" target="_blank" rel="noopener" title="Open Kafka UI (Docker only)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
       </div>
 
@@ -121,7 +121,7 @@
           <div>
             <div class="font-bold text-sm">Reset Vector Storage</div>
             <div class="text-muted text-sm mt-4">
-              Permanently delete all indexed documents from ChromaDB.
+              Permanently delete all indexed documents from Pinecone.
               Cannot be undone — you will need to re-ingest all CVs.
             </div>
           </div>
@@ -179,7 +179,7 @@
     <!-- ── #ingest ────────────────────────────────────────────────────────── -->
     <div class="page" id="page-ingest">
       <div class="page-title">Ingest CV</div>
-      <div class="page-subtitle">Upload a PDF to extract, chunk, classify, and store in ChromaDB</div>
+      <div class="page-subtitle">Upload a PDF to extract, chunk, classify, and store in Pinecone</div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
         <div class="card">

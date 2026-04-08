@@ -163,7 +163,7 @@ window.addEventListener('hashchange', () => {
 async function promptResetStorage() {
   openConfirmModal(
     'Reset Vector Storage',
-    'This will permanently delete ALL indexed documents from ChromaDB. ' +
+    'This will permanently delete ALL indexed documents from Pinecone. ' +
     'You will need to re-ingest all CVs. This cannot be undone.',
     async () => {
       try {
@@ -189,12 +189,12 @@ async function refreshDashboard() {
   try {
     const health = await API.get('/api/v1/health');
     setServiceCard('api', 'ok', 'API Server', 'FastAPI · uvicorn', '');
-    setServiceCard('db',  'ok', 'ChromaDB', health.chroma_collection, `${health.document_count} docs`);
+    setServiceCard('db',  'ok', 'Pinecone', health.pinecone_index, `${health.document_count} docs`);
     setServiceCard('kafka', health.kafka_enabled ? 'ok' : 'warning',
       'Kafka', health.kafka_enabled ? 'Connected' : 'Disabled (direct mode)', '');
 
     document.getElementById('stat-docs').textContent = health.document_count ?? '–';
-    document.getElementById('stat-collection').textContent = health.chroma_collection ?? '–';
+    document.getElementById('stat-collection').textContent = health.pinecone_index ?? '–';
 
     setHeaderHealth('ok');
   } catch (e) {
@@ -671,8 +671,9 @@ function renderConfigCards(cfg, health) {
     </div>
     <div class="card">
       <div class="card-title">Vector Store</div>
-      ${cfgRow('Collection', cfg.chroma_collection, true)}
-      ${cfgRow('Persist Dir', cfg.chroma_persist_dir, true)}
+      ${cfgRow('Pinecone Index', cfg.pinecone_index_name, true)}
+      ${cfgRow('Pinecone Namespace', cfg.pinecone_namespace, true)}
+      ${cfgRow('Snowflake', cfg.snowflake_connected ? 'Connected' : 'Disabled', true)}
       ${cfgRow('Documents Indexed', health?.document_count ?? '–')}
     </div>
     <div class="card">
@@ -801,11 +802,11 @@ kill $(lsof -ti:8000)`)}
 </div>
 
 <div class="doc-section">
-  <h2>8 — ChromaDB Storage — Inspection &amp; Console</h2>
-  <p>A complete reference for directly inspecting the vector store — every document, filter, metadata field, and index — without going through the SecureRAG API.</p>
+  <h2>8 — Pinecone Vector Store + Snowflake Data Lake</h2>
+  <p>A reference for inspecting the vector store and data lake — every document, filter, metadata field, and index.</p>
 
   <h3>What is stored</h3>
-  <p>Each ingested PDF chunk is stored as a ChromaDB document with a 768-dim embedding and this metadata:</p>
+  <p>Each ingested PDF chunk is stored as a Pinecone vector with metadata. Snowflake stores the full medallion-layer data (bronze/silver/gold).</p>
   <div class="table-wrap mb-12">
     <table class="env-table">
       <thead><tr><th>Field</th><th>Type</th><th>Example</th><th>Purpose</th></tr></thead>
@@ -819,137 +820,81 @@ kill $(lsof -ti:8000)`)}
       </tbody>
     </table>
   </div>
-  <p>Default location: <code>securerag/data/chroma_db/</code> &nbsp;|&nbsp; Collection: <code>cv_chunks</code></p>
+  <p>Pinecone index: <code>cv-chunks</code> &nbsp;|&nbsp; Namespace: <code>default</code></p>
 
-  <h3>Connect — Python embedded mode (default)</h3>
-  <p>When <code>KAFKA_ENABLED=false</code> and the server runs locally, the database is a set of files on disk. Stop the server first to avoid lock conflicts, then:</p>
-  ${codeBlock(`import chromadb
+  <h3>Connect — Python Pinecone client</h3>
+  ${codeBlock(`from pinecone import Pinecone
 
-# Point at the same directory the server uses
-client = chromadb.PersistentClient(path="./data/chroma_db")
+pc = Pinecone(api_key="your-api-key")
+index = pc.Index("cv-chunks")
 
-# List all collections
-print(client.list_collections())
-# [Collection(name=cv_chunks)]
+# Index statistics
+stats = index.describe_index_stats()
+print(f"Total vectors: {stats['total_vector_count']}")
+print(f"Namespaces: {list(stats['namespaces'].keys())}")`)}
 
-# Open the collection
-col = client.get_collection("cv_chunks")
-
-# Total document count
-print(col.count())   # e.g. 75
-
-# Get all documents (no embeddings — fast)
-results = col.get(include=["metadatas", "documents"])
-for meta, doc in zip(results["metadatas"], results["documents"]):
-    print(meta, "|", doc[:80])`)}
-
-  <h3>Connect — Python server mode (Docker)</h3>
-  <p>When running via <code>make infra-up</code>, ChromaDB is exposed on port <strong>8001</strong>:</p>
-  ${codeBlock(`import chromadb
-
-client = chromadb.HttpClient(host="localhost", port=8001)
-
-col = client.get_collection("cv_chunks")
-print(col.count())`)}
-
-  <h3>Filter by candidate</h3>
-  ${codeBlock(`# All chunks for Alice
-results = col.get(
-    where={"candidate_id": "alice"},
-    include=["metadatas", "documents"]
-)
-print(f"{len(results['ids'])} chunks for alice")
-
-# All chunks for alice, only compensation subcategories
-results = col.get(
-    where={"$and": [
-        {"candidate_id": "alice"},
-        {"subcategory": {"$in": ["salary_expectation", "current_compensation"]}}
-    ]},
-    include=["metadatas"]
-)
-for m in results["metadatas"]:
-    print(m["subcategory"], m["chunk_index"])`)}
-
-  <h3>Filter by subcategory (RBAC simulation)</h3>
+  <h3>Query with metadata filter (RBAC simulation)</h3>
   ${codeBlock(`# Simulate what technical_interviewer sees (no PII/compensation)
 allowed = ["employment_history", "skills_and_tools",
            "academic_degrees", "certifications_training", "interview_feedback"]
 
-results = col.get(
-    where={"subcategory": {"$in": allowed}},
-    include=["metadatas"]
+results = index.query(
+    vector=[0.1] * 1024,  # dummy query vector
+    filter={"subcategory": {"$in": allowed}},
+    top_k=50,
+    include_metadata=True,
+    namespace="default"
 )
-subcats = {m["subcategory"] for m in results["metadatas"]}
-print("Visible subcategories:", subcats)
+for match in results["matches"]:
+    print(match["metadata"]["subcategory"], match["score"])`)}
 
-# Confirm denied subcategories are absent
-assert "identity" not in subcats
-assert "current_compensation" not in subcats`)}
+  <h3>Filter by candidate</h3>
+  ${codeBlock(`# All chunks for Alice with compensation subcategories
+results = index.query(
+    vector=[0.1] * 1024,
+    filter={"$and": [
+        {"candidate_id": {"$eq": "alice"}},
+        {"subcategory": {"$in": ["salary_expectation", "current_compensation"]}}
+    ]},
+    top_k=50,
+    include_metadata=True,
+    namespace="default"
+)
+for match in results["matches"]:
+    print(match["metadata"]["subcategory"], match["metadata"]["chunk_index"])`)}
 
-  <h3>Count documents per candidate</h3>
-  ${codeBlock(`from collections import Counter
+  <h3>Snowflake data lake (medallion architecture)</h3>
+  ${codeBlock(`import snowflake.connector
 
-results = col.get(include=["metadatas"])
-counts = Counter(m["candidate_id"] for m in results["metadatas"])
-for cid, n in counts.most_common():
-    print(f"  {cid}: {n} chunks")`)}
+conn = snowflake.connector.connect(
+    account="your_account", user="your_user", password="your_password",
+    database="SECURERAG", schema="RAG_DATA", warehouse="COMPUTE_WH"
+)
+cur = conn.cursor()
 
-  <h3>List unique subcategory values</h3>
-  ${codeBlock(`results = col.get(include=["metadatas"])
-subcats = sorted({m["subcategory"] for m in results["metadatas"]})
-print("Subcategories in store:", subcats)`)}
+# Bronze layer — raw extracted documents
+cur.execute("SELECT candidate_id, source_file, page_count FROM BRONZE_RAW_DOCUMENTS")
+for row in cur: print(row)
 
-  <h3>Spot duplicate ingestions</h3>
-  ${codeBlock(`from collections import Counter
+# Silver layer — classified chunks
+cur.execute("SELECT candidate_id, subcategory, COUNT(*) FROM SILVER_CLASSIFIED_CHUNKS GROUP BY 1,2")
+for row in cur: print(row)
 
-results = col.get(include=["metadatas"])
-files = Counter(m["source_file"] for m in results["metadatas"])
-dupes = {f: n for f, n in files.items() if n > 30}  # >30 chunks = likely re-ingested
-if dupes:
-    print("Possible duplicates:", dupes)`)}
+# Gold layer — Pinecone vector references
+cur.execute("SELECT COUNT(*) FROM GOLD_INDEXED_VECTORS")
+print(f"Total indexed vectors: {cur.fetchone()[0]}")
 
-  <h3>HTTP REST API (curl — server mode only)</h3>
-  ${codeBlock(`# List collections
-curl http://localhost:8001/api/v1/collections
+# Audit trail
+cur.execute("SELECT role, query_text, result_count FROM AUDIT_QUERY_LOG ORDER BY queried_at DESC LIMIT 10")
+for row in cur: print(row)`)}
 
-# Get collection info (name, count, metadata)
-curl http://localhost:8001/api/v1/collections/cv_chunks
-
-# Get documents with a where filter (paginated)
-curl -X POST http://localhost:8001/api/v1/collections/cv_chunks/get \\
-  -H "Content-Type: application/json" \\
-  -d '{"where": {"candidate_id": "alice"}, "include": ["metadatas", "documents"], "limit": 20}'
-
-# Count matching a filter
-curl -X POST http://localhost:8001/api/v1/collections/cv_chunks/count \\
-  -H "Content-Type: application/json" \\
-  -d '{"where": {"subcategory": "skills_and_tools"}}'`)}
-
-  <h3>ChromaDB built-in web UI (Docker only)</h3>
-  <p>When running via <code>make infra-up</code>, the ChromaDB Docker image includes a minimal REST browser accessible at <a href="http://localhost:8001" target="_blank">http://localhost:8001</a>. It shows:</p>
+  <h3>Pinecone Console</h3>
+  <p>Manage your index at <a href="https://app.pinecone.io" target="_blank">app.pinecone.io</a>. The console shows:</p>
   <ul>
-    <li>All collections with document count</li>
-    <li>Collection detail — peek at raw documents</li>
-    <li>Basic query interface for semantic search</li>
+    <li>Index dimensions, metric, and pod type</li>
+    <li>Vector count per namespace</li>
+    <li>Query interface for semantic search</li>
   </ul>
-  ${codeBlock(`# Start the Docker infrastructure (Kafka + ChromaDB)
-make infra-up
-
-# Then open in browser:
-# http://localhost:8001`)}
-
-  <h3>Indexes</h3>
-  <p>ChromaDB uses <strong>HNSW</strong> (Hierarchical Navigable Small World graph) for ANN (approximate nearest-neighbour) vector search. It is created automatically on first insert.</p>
-  ${codeBlock(`# Inspect HNSW index configuration
-col = client.get_collection("cv_chunks")
-print(col.metadata)
-# {'hnsw:space': 'l2', 'hnsw:construction_ef': 100, 'hnsw:M': 16, ...}
-
-# The metadata filter (subcategory $in [...]) is NOT indexed — it uses a
-# brute-force scan over the pre-filtered candidate set.
-# For ~10k documents this is fast (<5 ms). For >1M documents, consider
-# partitioning by candidate_id into separate collections.`)}
 </div>
 
 <div class="doc-section">
@@ -1007,7 +952,7 @@ function renderArchitecture() {
 │           │                  │                            │
 │           ▼                  ▼                            │
 │     ┌───────────────────────────────────────────────┐     │
-│     │         ChromaDB Vector Store                 │     │
+│     │       Pinecone Vector Store                   │     │
 │     │   (metadata: category, subcategory, cid)      │     │
 │     └───────────────────────────────────────────────┘     │
 │                              │                            │
@@ -1047,7 +992,7 @@ evaluation
 
 <div class="doc-section">
   <h2>Ingestion Pipeline</h2>
-  <p>A PDF document flows through 4 stages before landing in ChromaDB:</p>
+  <p>A PDF document flows through 4 stages before landing in Pinecone (with Snowflake data lake tracking):</p>
   ${codeBlock(`PDF File
    │
    ▼  src/extraction/pdf_extractor.py
@@ -1069,11 +1014,11 @@ SemanticClassifier.classify_chunks(chunks)
    │
    ▼  src/embedding/vector_store.py
 VectorStore.add_documents(classified_chunks)
-   │  → List[str]  (ChromaDB document IDs)
-   │  Embeddings: Together.ai m2-bert-80M-8k-retrieval (768-dim)
+   │  → List[str]  (Pinecone vector IDs)
+   │  Embeddings: Together.ai multilingual-e5-large-instruct (1024-dim)
    │  Metadata stored verbatim — enables pre-retrieval RBAC filter
    ▼
-ChromaDB collection: cv_chunks`)}
+Pinecone index: cv-chunks  |  Snowflake: GOLD_INDEXED_VECTORS`)}
   <p>Kafka mode wraps this flow: the ingest endpoint publishes a message to the <code>cv.raw.intake</code> topic, and a background consumer thread calls the same pipeline asynchronously.</p>
 </div>
 
@@ -1091,10 +1036,10 @@ filter_builder.build("technical_interviewer")
 # → {"subcategory": {"$in": ["employment_history", "skills_and_tools", ...]}}
 
 # Special case 1: hr_manager has wildcard ("*") → empty filter {}
-# → ChromaDB returns all documents (maximum performance, no filter overhead)
+# → Pinecone returns all documents (maximum performance, no filter overhead)
 
 # Special case 2: unknown role or empty subcategory list
-# → {"subcategory": {"$in": []}}  → ChromaDB returns 0 results (deny-all)`)}
+# → {"subcategory": {"$in": []}}  → Pinecone returns 0 results (deny-all)`)}
   <h3>Query pipeline code path</h3>
   ${codeBlock(`# src/rag/query_pipeline.py  — QueryPipeline.run()
 
@@ -1102,11 +1047,11 @@ filter_builder.build("technical_interviewer")
    → [list of permitted subcategories for this role]
 
 2. filter_builder.build(role, candidate_id=...)
-   → ChromaDB metadata filter dict
+   → Pinecone metadata filter dict
    (candidate_id adds: {"$and": [{subcategory filter}, {candidate_id: ...}]})
 
 3. vector_store.get_retriever(metadata_filter, top_k)
-   → LangChain VectorStoreRetriever backed by Chroma
+   → LangChain VectorStoreRetriever backed by Pinecone
 
 4. retriever.invoke(query)
    → List[Document]  — ONLY documents passing the metadata filter
@@ -1120,9 +1065,9 @@ filter_builder.build("technical_interviewer")
 
 7. audit_logger.log_query(role, query, result_count, latency_ms, ...)
    → appended to data/audit.jsonl`)}
-  <h3>ChromaDB metadata filter syntax</h3>
-  ${codeBlock(`# Single subcategory (exact match)
-{"subcategory": "employment_history"}
+  <h3>Pinecone metadata filter syntax</h3>
+  ${codeBlock(`# Single subcategory ($eq match)
+{"subcategory": {"$eq": "employment_history"}}
 
 # Multiple subcategories ($in operator)
 {"subcategory": {"$in": ["employment_history", "skills_and_tools"]}}
@@ -1130,7 +1075,7 @@ filter_builder.build("technical_interviewer")
 # Candidate scope (combined $and)
 {"$and": [
   {"subcategory": {"$in": ["employment_history", "skills_and_tools"]}},
-  {"candidate_id": "alice"}
+  {"candidate_id": {"$eq": "alice"}}
 ]}
 
 # hr_manager wildcard — no filter applied
@@ -1155,7 +1100,7 @@ filter_builder.build("technical_interviewer")
     ├─▶ PolicyEngine → allowed_subcategories
     ├─▶ FilterBuilder → metadata_filter
     ├─▶ VectorStore.get_retriever(filter, k)
-    │      └─▶ ChromaDB.similarity_search_with_metadata_filter(query_embedding)
+    │      └─▶ Pinecone.similarity_search_with_metadata_filter(query_embedding)
     │              → filtered List[Document]
     ├─▶ ContextAssembler.assemble(docs) → context_string
     ├─▶ LLMService.invoke(system_prompt + context + query) → answer
@@ -1173,8 +1118,8 @@ filter_builder.build("technical_interviewer")
 </div>
 
 <div class="doc-section">
-  <h2>ChromaDB Metadata Schema</h2>
-  <p>Every document stored in ChromaDB carries this metadata, enabling both RBAC filtering and candidate scoping:</p>
+  <h2>Pinecone Metadata Schema</h2>
+  <p>Every vector stored in Pinecone carries this metadata, enabling both RBAC filtering and candidate scoping:</p>
   ${codeBlock(`{
   "candidate_id":  "alice",               # string — candidate identifier
   "source_file":   "Alice_Johnson.pdf",   # string — original PDF filename

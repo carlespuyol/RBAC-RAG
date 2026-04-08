@@ -3,30 +3,34 @@ fastapi==0.115.6
 uvicorn==0.32.1
 
 # LangChain core
-langchain==0.3.14
-langchain-core==0.3.29
-langchain-community==0.3.14
-langchain-text-splitters==0.3.4
-langchain-chroma>=0.1.4
-langchain-together>=0.2.0
+langchain>=1.2.0
+langchain-core>=1.2.0
+langchain-community>=0.3.14
+langchain-text-splitters>=1.0.0
+langchain-pinecone>=0.2.0
+langchain-together>=0.3.0
 
 # Together.ai SDK
 together>=1.2.0
 
-# Vector store — must be compatible with langchain-chroma (let pip resolve)
-chromadb>=0.4.0,<0.6.0
+# Vector store
+pinecone-client>=5.0.0
+
+# Snowflake data lake
+snowflake-connector-python>=3.6.0
+snowflake-sqlalchemy>=1.7.0
 
 # PDF extraction
 pdfplumber==0.11.4
 pymupdf==1.25.2
 
 # Kafka
-confluent-kafka==2.7.0
+confluent-kafka==2.14.0
 
 # Config + validation
 pyyaml==6.0.2
-pydantic==2.10.4
-pydantic-settings==2.7.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
 python-dotenv==1.0.1
 
 # File watching
@@ -36,7 +40,7 @@ watchdog==6.0.0
 httpx==0.28.1
 
 # Observability
-langfuse>=2.7.0,<3.0.0
+langfuse>=3.0.0
 
 # Testing
 pytest==8.3.4

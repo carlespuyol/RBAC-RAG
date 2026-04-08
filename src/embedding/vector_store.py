@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any, Optional
 
 from langchain_core.documents import Document
@@ -13,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class VectorStore:
     """
-    ChromaDB vector store wrapper. Central to the RBAC enforcement system.
+    Pinecone vector store wrapper. Central to the RBAC enforcement system.
     The get_retriever(role_filter=...) method is where RBAC policy meets retrieval:
     every similarity search is pre-filtered to only matching subcategories.
     """
@@ -21,33 +20,34 @@ class VectorStore:
     def __init__(
         self,
         embeddings: Any,
-        persist_directory: str = "./data/chroma_db",
-        collection_name: str = "cv_chunks",
+        index_name: str = "cv-chunks",
+        namespace: str = "default",
+        api_key: Optional[str] = None,
     ):
-        self.persist_directory = persist_directory
-        self.collection_name = collection_name
-        Path(persist_directory).mkdir(parents=True, exist_ok=True)
-        self._store = self._init_store(embeddings)
+        self.index_name = index_name
+        self.namespace = namespace
+        self._api_key = api_key
+        self._embeddings = embeddings
+        self._index, self._store = self._init_store(embeddings)
 
-    def _init_store(self, embeddings: Any) -> Any:
-        import logging
-        # chromadb's posthog telemetry has a version mismatch with the installed
-        # posthog SDK — silence it so startup logs are clean.
-        logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+    def _init_store(self, embeddings: Any) -> tuple[Any, Any]:
+        from pinecone import Pinecone
+        from langchain_pinecone import PineconeVectorStore
 
-        from langchain_chroma import Chroma
+        pc = Pinecone(api_key=self._api_key)
+        index = pc.Index(self.index_name)
 
-        store = Chroma(
-            collection_name=self.collection_name,
-            embedding_function=embeddings,
-            persist_directory=self.persist_directory,
+        store = PineconeVectorStore(
+            index=index,
+            embedding=embeddings,
+            namespace=self.namespace,
         )
         logger.info(
-            "ChromaDB initialized: collection='%s', dir='%s'",
-            self.collection_name,
-            self.persist_directory,
+            "Pinecone initialized: index='%s', namespace='%s'",
+            self.index_name,
+            self.namespace,
         )
-        return store
+        return index, store
 
     @observe(name="vectorstore.add", as_type="span")
     def add_documents(self, documents: list[Document]) -> list[str]:
@@ -58,7 +58,8 @@ class VectorStore:
         langfuse_context.update_current_observation(
             input={
                 "doc_count": len(documents),
-                "collection": self.collection_name,
+                "index": self.index_name,
+                "namespace": self.namespace,
                 "documents": [
                     {
                         "chunk_index": d.metadata.get("chunk_index"),
@@ -83,16 +84,16 @@ class VectorStore:
                 )
 
         ids = self._store.add_documents(documents)
-        logger.info("Added %d documents to ChromaDB collection '%s'", len(documents), self.collection_name)
+        logger.info("Added %d documents to Pinecone index '%s'", len(documents), self.index_name)
         langfuse_context.update_current_observation(
-            output={"stored_count": len(ids), "collection": self.collection_name}
+            output={"stored_count": len(ids), "index": self.index_name}
         )
         return ids
 
     def get_retriever(self, role_filter: dict, k: int = 10) -> Any:
         """
         Return a LangChain retriever with the RBAC metadata filter pre-applied.
-        role_filter is a ChromaDB where-clause dict from FilterBuilder.build().
+        role_filter is a Pinecone filter dict from FilterBuilder.build().
 
         An empty dict {} means no filter (hr_manager wildcard) = all results.
         """
@@ -114,32 +115,35 @@ class VectorStore:
         return self._store.similarity_search(query, k=k)
 
     def get_document_count(self) -> int:
-        """Return total number of documents in the collection."""
+        """Return total number of vectors in the namespace."""
         try:
-            return self._store._collection.count()
+            stats = self._index.describe_index_stats()
+            ns_stats = stats.get("namespaces", {}).get(self.namespace, {})
+            return ns_stats.get("vector_count", 0)
         except Exception:
             return 0
 
     def delete_by_candidate(self, candidate_id: str) -> None:
         """Remove all chunks for a specific candidate (e.g., for re-ingestion)."""
-        self._store._collection.delete(where={"candidate_id": candidate_id})
+        self._index.delete(
+            filter={"candidate_id": {"$eq": candidate_id}},
+            namespace=self.namespace,
+        )
         logger.info("Deleted all chunks for candidate_id='%s'", candidate_id)
 
     def reset_collection(self) -> int:
-        """Delete every document in the collection. Returns the count that was deleted."""
+        """Delete every vector in the namespace. Returns the count that was deleted."""
         count = self.get_document_count()
         if count > 0:
-            all_ids = self._store._collection.get(include=[])["ids"]
-            if all_ids:
-                self._store._collection.delete(ids=all_ids)
-        logger.info("Reset collection '%s': deleted %d documents", self.collection_name, count)
+            self._index.delete(delete_all=True, namespace=self.namespace)
+        logger.info("Reset namespace '%s': deleted %d vectors", self.namespace, count)
         return count
 
     def get_collection_stats(self) -> dict:
-        """Return basic collection statistics."""
+        """Return basic index/namespace statistics."""
         count = self.get_document_count()
         return {
-            "collection_name": self.collection_name,
+            "index_name": self.index_name,
+            "namespace": self.namespace,
             "document_count": count,
-            "persist_directory": self.persist_directory,
         }

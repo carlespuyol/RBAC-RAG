@@ -17,12 +17,14 @@ async def health(request: Request) -> HealthResponse:
     vector_store = request.app.state.vector_store
     producer = request.app.state.producer
     stats = vector_store.get_collection_stats()
+    snowflake_svc = getattr(request.app.state, "snowflake_svc", None)
 
     return HealthResponse(
         status="ok",
         kafka_enabled=producer.enabled,
-        chroma_collection=stats["collection_name"],
+        pinecone_index=stats["index_name"],
         document_count=stats["document_count"],
+        snowflake_connected=snowflake_svc.is_connected() if snowflake_svc else False,
     )
 
 
@@ -84,14 +86,32 @@ async def reset_storage(request: Request) -> dict:
     }
 
 
+@router.get("/admin/snowflake-stats")
+async def snowflake_stats(request: Request) -> dict:
+    """Return Snowflake data lake layer counts."""
+    snowflake_svc = getattr(request.app.state, "snowflake_svc", None)
+    if not snowflake_svc:
+        return {"status": "disabled", "message": "Snowflake not configured"}
+    try:
+        stats = snowflake_svc.get_document_stats()
+        return {"status": "ok", **stats}
+    except Exception as e:
+        logger.error("Snowflake stats error: %s", e)
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/config")
 async def get_config(request: Request) -> dict:
     """Return non-sensitive runtime configuration for the UI config page."""
     import os
+    snowflake_svc = getattr(request.app.state, "snowflake_svc", None)
     return {
         "kafka_enabled": os.getenv("KAFKA_ENABLED", "false").lower() == "true",
-        "chroma_collection": os.getenv("CHROMA_COLLECTION", "cv_chunks"),
-        "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db"),
+        "pinecone_index_name": os.getenv("PINECONE_INDEX_NAME", "cv-chunks"),
+        "pinecone_namespace": os.getenv("PINECONE_NAMESPACE", "default"),
+        "snowflake_connected": snowflake_svc.is_connected() if snowflake_svc else False,
+        "snowflake_database": os.getenv("SNOWFLAKE_DATABASE", ""),
+        "snowflake_schema": os.getenv("SNOWFLAKE_SCHEMA", ""),
         "embedding_model": os.getenv("EMBEDDING_MODEL", "togethercomputer/m2-bert-80M-8k-retrieval"),
         "llm_model": os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
         "llm_temperature": float(os.getenv("LLM_TEMPERATURE", "0.3")),

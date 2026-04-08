@@ -54,9 +54,9 @@ def mock_app():
     mock_vector_store = MagicMock(spec=VectorStore)
     mock_vector_store.get_document_count.return_value = 42
     mock_vector_store.get_collection_stats.return_value = {
-        "collection_name": "cv_chunks",
+        "index_name": "cv-chunks",
+        "namespace": "default",
         "document_count": 42,
-        "persist_directory": "./data/chroma_db",
     }
 
     # Default: retriever returns skills_and_tools chunks
@@ -94,6 +94,7 @@ def mock_app():
     app.state.producer = mock_producer
     app.state.consumer = MagicMock()
     app.state.direct_ingest_fn = MagicMock(return_value=5)
+    app.state.snowflake_svc = None
 
     return app, mock_vector_store, pipeline
 

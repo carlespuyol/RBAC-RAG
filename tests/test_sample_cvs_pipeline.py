@@ -3,26 +3,30 @@ Integration tests: full QueryPipeline with the 3 synthetic CVs.
 
 Strategy
 --------
-• Uses the same _TestEmbeddings + pre-classified Documents as the vector_rbac tests.
-• LLM is patched (pipeline._generate) so no Together.ai API key is needed.
-• PolicyEngine, FilterBuilder, ContextAssembler, and AuditLogger are all REAL.
-• The vector store is a real Chroma instance backed by a tmp directory.
+* Uses the same _TestEmbeddings + pre-classified Documents as the vector_rbac tests.
+* LLM is patched (pipeline._generate) so no Together.ai API key is needed.
+* PolicyEngine, FilterBuilder, ContextAssembler, and AuditLogger are all REAL.
+* The vector store is a real Pinecone index backed by a dedicated test namespace.
 
 Coverage
 --------
-• hr_manager retrieves docs from all 3 candidates
-• technical_interviewer: sources are within allowed subcategories only
-• finance_analyst: sees Clara's compensation; Bob's current_compensation absent
-• recruiter: Alice's current_compensation blocked
-• candidate_id scoping: all sources belong to the requested candidate
-• Response structure: all required fields present, chunks_retrieved == len(sources)
-• allowed_subcategories in response matches PolicyEngine for the role
-• Audit log: 3 queries → 3 entries; each entry carries allowed_subcategories
-• Graceful no-context message when no docs match the RBAC filter + candidate scope
+* hr_manager retrieves docs from all 3 candidates
+* technical_interviewer: sources are within allowed subcategories only
+* finance_analyst: sees Clara's compensation; Bob's current_compensation absent
+* recruiter: Alice's current_compensation blocked
+* candidate_id scoping: all sources belong to the requested candidate
+* Response structure: all required fields present, chunks_retrieved == len(sources)
+* allowed_subcategories in response matches PolicyEngine for the role
+* Audit log: 3 queries -> 3 entries; each entry carries allowed_subcategories
+* Graceful no-context message when no docs match the RBAC filter + candidate scope
+
+Requires: PINECONE_API_KEY environment variable and a test index.
 """
 from __future__ import annotations
 
 import hashlib
+import os
+import time
 from typing import List
 from unittest.mock import patch
 
@@ -35,9 +39,10 @@ from src.rbac.policy_engine import PolicyEngine
 from src.rbac.audit_logger import AuditLogger
 from src.rag.context_assembler import ContextAssembler
 from src.rag.query_pipeline import QueryPipeline
+from tests.conftest import requires_pinecone
 
 
-# ── Fake embeddings (identical to test_sample_cvs_vector_rbac) ────────────────
+# -- Fake embeddings (identical to test_sample_cvs_vector_rbac) ----------------
 
 class _TestEmbeddings(Embeddings):
     DIM = 768
@@ -58,7 +63,7 @@ class _TestEmbeddings(Embeddings):
         return self._vec("__query__" + text)
 
 
-# ── Pre-classified Documents ──────────────────────────────────────────────────
+# -- Pre-classified Documents --------------------------------------------------
 
 _CATEGORY_MAP = {
     "identity":                "personal_information",
@@ -126,7 +131,7 @@ CLARA_DOCS = [
 ALL_DOCS = ALICE_DOCS + BOB_DOCS + CLARA_DOCS  # 25 total
 
 
-# ── Module-scoped shared fixtures ─────────────────────────────────────────────
+# -- Module-scoped shared fixtures ---------------------------------------------
 
 @pytest.fixture(scope="module")
 def policy_engine():
@@ -137,18 +142,20 @@ def policy_engine():
 
 
 @pytest.fixture(scope="module")
-def populated_store(tmp_path_factory, policy_engine):
-    """Real Chroma store with 25 pre-classified Documents."""
+def populated_store(pinecone_api_key, pinecone_index_name, clean_pinecone_namespace, policy_engine):
+    """Real Pinecone store with 25 pre-classified Documents."""
     from src.embedding.vector_store import VectorStore
 
     FilterBuilder.set_all_subcategories(policy_engine._all_subcategories)
-    chroma_dir = str(tmp_path_factory.mktemp("chroma_pipeline"))
     store = VectorStore(
         embeddings=_TestEmbeddings(),
-        persist_directory=chroma_dir,
-        collection_name="test_sample_cvs_pipeline",
+        index_name=pinecone_index_name,
+        namespace=clean_pinecone_namespace,
+        api_key=pinecone_api_key,
     )
     store.add_documents(ALL_DOCS)
+    # Allow Pinecone to index the vectors before querying
+    time.sleep(5)
     return store
 
 
@@ -159,7 +166,7 @@ def _init_filter_builder(policy_engine):
     FilterBuilder.set_all_subcategories([])
 
 
-# ── Function-scoped pipeline (fresh audit logger per test) ────────────────────
+# -- Function-scoped pipeline (fresh audit logger per test) --------------------
 
 @pytest.fixture
 def pipeline(tmp_path, policy_engine, populated_store):
@@ -176,12 +183,13 @@ def pipeline(tmp_path, policy_engine, populated_store):
         llm=mock_llm,
         context_assembler=ContextAssembler(),
         audit_logger=audit,
-        top_k=50,   # retrieve all matching docs (≤25 total)
+        top_k=50,   # retrieve all matching docs (<=25 total)
     )
 
 
-# ── Multi-candidate access tests ───────────────────────────────────────────────
+# -- Multi-candidate access tests ---------------------------------------------
 
+@requires_pinecone
 def test_pipeline_hr_manager_context_has_all_candidates(pipeline):
     """hr_manager with no candidate scoping must retrieve docs from all 3 CVs."""
     with patch.object(pipeline, "_generate", return_value="Summary"):
@@ -193,8 +201,9 @@ def test_pipeline_hr_manager_context_has_all_candidates(pipeline):
     assert "clara" in source_candidates, "hr_manager should see Clara's data"
 
 
-# ── RBAC enforcement per role ──────────────────────────────────────────────────
+# -- RBAC enforcement per role -------------------------------------------------
 
+@requires_pinecone
 def test_pipeline_technical_interviewer_sources_in_allowed_subcategories(pipeline, policy_engine):
     """All sources returned for technical_interviewer must be within the allowed subcategory set."""
     allowed = set(policy_engine.get_allowed_subcategories("technical_interviewer"))
@@ -207,6 +216,7 @@ def test_pipeline_technical_interviewer_sources_in_allowed_subcategories(pipelin
     )
 
 
+@requires_pinecone
 def test_pipeline_finance_analyst_sees_clara_compensation(pipeline):
     """finance_analyst scoped to Clara must retrieve her salary and current_compensation docs."""
     with patch.object(pipeline, "_generate", return_value="Compensation summary"):
@@ -218,6 +228,7 @@ def test_pipeline_finance_analyst_sees_clara_compensation(pipeline):
     )
 
 
+@requires_pinecone
 def test_pipeline_finance_analyst_denied_bobs_current_compensation(pipeline):
     """finance_analyst scoped to Bob must not retrieve 'current_compensation' (Bob has none)."""
     with patch.object(pipeline, "_generate", return_value="Bob compensation"):
@@ -225,10 +236,11 @@ def test_pipeline_finance_analyst_denied_bobs_current_compensation(pipeline):
 
     returned_subcats = [s["subcategory"] for s in result["sources"]]
     assert "current_compensation" not in returned_subcats, (
-        "Bob has no current salary — 'current_compensation' must not appear in sources"
+        "Bob has no current salary -- 'current_compensation' must not appear in sources"
     )
 
 
+@requires_pinecone
 def test_pipeline_recruiter_denied_alice_current_compensation(pipeline):
     """recruiter scoped to Alice must not retrieve 'current_compensation' (role-denied)."""
     with patch.object(pipeline, "_generate", return_value="Alice profile"):
@@ -236,12 +248,13 @@ def test_pipeline_recruiter_denied_alice_current_compensation(pipeline):
 
     returned_subcats = [s["subcategory"] for s in result["sources"]]
     assert "current_compensation" not in returned_subcats, (
-        "recruiter must not see 'current_compensation' — it is denied for this role"
+        "recruiter must not see 'current_compensation' -- it is denied for this role"
     )
 
 
-# ── Candidate scoping ──────────────────────────────────────────────────────────
+# -- Candidate scoping --------------------------------------------------------
 
+@requires_pinecone
 def test_pipeline_candidate_scoped_to_bob(pipeline):
     """When candidate_id='bob', all returned sources must belong to Bob only."""
     with patch.object(pipeline, "_generate", return_value="Bob profile"):
@@ -254,8 +267,9 @@ def test_pipeline_candidate_scoped_to_bob(pipeline):
         )
 
 
-# ── Response structure tests ───────────────────────────────────────────────────
+# -- Response structure tests --------------------------------------------------
 
+@requires_pinecone
 def test_pipeline_response_has_all_required_fields(pipeline):
     """QueryPipeline.run() must return all 6 required fields."""
     with patch.object(pipeline, "_generate", return_value="Answer"):
@@ -265,8 +279,9 @@ def test_pipeline_response_has_all_required_fields(pipeline):
         assert field in result, f"Required field '{field}' missing from pipeline response"
 
 
+@requires_pinecone
 def test_pipeline_chunks_retrieved_matches_sources_length(pipeline):
-    """chunks_retrieved must equal len(sources) — the pipeline must stay consistent."""
+    """chunks_retrieved must equal len(sources) -- the pipeline must stay consistent."""
     with patch.object(pipeline, "_generate", return_value="Answer"):
         result = pipeline.run(role="recruiter", query="Contact details for all candidates")
 
@@ -275,6 +290,7 @@ def test_pipeline_chunks_retrieved_matches_sources_length(pipeline):
     )
 
 
+@requires_pinecone
 def test_pipeline_allowed_subcategories_matches_policy(pipeline, policy_engine):
     """allowed_subcategories in the response must match PolicyEngine output for the role."""
     role = "finance_analyst"
@@ -288,6 +304,7 @@ def test_pipeline_allowed_subcategories_matches_policy(pipeline, policy_engine):
     )
 
 
+@requires_pinecone
 def test_pipeline_latency_ms_is_positive(pipeline):
     """latency_ms must be a positive number."""
     with patch.object(pipeline, "_generate", return_value="Answer"):
@@ -296,8 +313,9 @@ def test_pipeline_latency_ms_is_positive(pipeline):
     assert result["latency_ms"] > 0, "latency_ms must be a positive float"
 
 
-# ── Audit log tests ────────────────────────────────────────────────────────────
+# -- Audit log tests -----------------------------------------------------------
 
+@requires_pinecone
 def test_pipeline_audit_logs_3_sequential_queries(pipeline):
     """Three successive queries on the same pipeline must each create an audit entry."""
     queries = [
@@ -315,6 +333,7 @@ def test_pipeline_audit_logs_3_sequential_queries(pipeline):
     assert logged_roles == {"hr_manager", "recruiter", "finance_analyst"}
 
 
+@requires_pinecone
 def test_pipeline_audit_entry_has_allowed_subcategories(pipeline):
     """Each audit log entry must contain the allowed_subcategories field."""
     with patch.object(pipeline, "_generate", return_value="Answer"):
@@ -330,8 +349,9 @@ def test_pipeline_audit_entry_has_allowed_subcategories(pipeline):
         assert len(entry["allowed_subcategories"]) > 0
 
 
-# ── Graceful no-context message ────────────────────────────────────────────────
+# -- Graceful no-context message -----------------------------------------------
 
+@requires_pinecone
 def test_pipeline_empty_result_returns_graceful_message(pipeline):
     """A query for a non-existent candidate must return 0 chunks and a graceful message.
     This tests the pipeline's no-context fallback path (no LLM call made)."""

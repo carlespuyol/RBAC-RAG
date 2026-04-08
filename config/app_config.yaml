@@ -10,10 +10,22 @@ together_ai:
   retry_attempts: 3
   retry_delay_seconds: 1
 
-chroma:
-  persist_directory: "./data/chroma_db"
-  collection_name: "cv_chunks"
+pinecone:
+  index_name: "cv-chunks"
+  namespace: "default"
+  metric: "cosine"
+  dimension: 1024  # matches multilingual-e5-large-instruct
   n_results: 10
+
+snowflake:
+  database: "SECURERAG"
+  schema: "RAG_DATA"
+  warehouse: "COMPUTE_WH"
+  tables:
+    raw_documents: "BRONZE_RAW_DOCUMENTS"
+    classified_chunks: "SILVER_CLASSIFIED_CHUNKS"
+    indexed_vectors: "GOLD_INDEXED_VECTORS"
+    audit_log: "AUDIT_QUERY_LOG"
 
 chunking:
   chunk_size: 512

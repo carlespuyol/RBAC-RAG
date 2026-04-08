@@ -1,28 +1,32 @@
 """
-Integration tests: real ChromaDB + RBAC metadata filtering for the 3 synthetic CVs.
+Integration tests: real Pinecone + RBAC metadata filtering for the 3 synthetic CVs.
 
 Strategy
 --------
-• Pre-classified Document objects (manually assigned subcategory metadata) stand in for
+* Pre-classified Document objects (manually assigned subcategory metadata) stand in for
   the semantic classifier so no Together.ai API key is required.
-• A _TestEmbeddings class (deterministic, no external calls) is used with a real Chroma
-  store persisted in a pytest tmp directory.
-• similarity_search(..., k=50) retrieves ALL matching docs (total ≤ 25) so every test
+* A _TestEmbeddings class (deterministic, no external calls) is used with a real Pinecone
+  index and a dedicated test namespace.
+* similarity_search(..., k=50) retrieves ALL matching docs (total <= 25) so every test
   asserts on the *complete* filtered result set, not a sampled subset.
 
 Coverage
 --------
-• hr_manager  → empty filter, all 25 docs accessible
-• technical_interviewer → 5 subcategories allowed, PII / compensation blocked
-• finance_analyst → 3 subcategories, employment / skills / education blocked
-• recruiter → 7 subcategories, current_compensation / references blocked
-• Candidate scoping (candidate_id) isolates per-person results
-• Bob's missing data (no current_compensation, no references) are surfaced correctly
-• deny-all filter (empty role) returns zero results
+* hr_manager  -> empty filter, all 25 docs accessible
+* technical_interviewer -> 5 subcategories allowed, PII / compensation blocked
+* finance_analyst -> 3 subcategories, employment / skills / education blocked
+* recruiter -> 7 subcategories, current_compensation / references blocked
+* Candidate scoping (candidate_id) isolates per-person results
+* Bob's missing data (no current_compensation, no references) are surfaced correctly
+* deny-all filter (empty role) returns zero results
+
+Requires: PINECONE_API_KEY environment variable and a test index.
 """
 from __future__ import annotations
 
 import hashlib
+import os
+import time
 from typing import List
 
 import pytest
@@ -31,16 +35,17 @@ from langchain_core.embeddings import Embeddings
 
 from src.rbac.filter_builder import FilterBuilder
 from src.rbac.policy_engine import PolicyEngine
+from tests.conftest import requires_pinecone
 
 
-# ── Fake embeddings (deterministic, no API calls) ─────────────────────────────
+# -- Fake embeddings (deterministic, no API calls) ----------------------------
 
 class _TestEmbeddings(Embeddings):
-    """Deterministic pseudo-random embeddings for ChromaDB testing."""
+    """Deterministic pseudo-random embeddings for Pinecone testing."""
     DIM = 768
 
     def _vec(self, text: str) -> List[float]:
-        """LCG seeded by MD5(text) → 768-dim float vector in [0, 1)."""
+        """LCG seeded by MD5(text) -> 768-dim float vector in [0, 1)."""
         seed = int(hashlib.md5(text.encode()).hexdigest(), 16) & 0xFFFFFFFF
         x = seed
         result: List[float] = []
@@ -56,7 +61,7 @@ class _TestEmbeddings(Embeddings):
         return self._vec("__query__" + text)
 
 
-# ── Pre-classified Documents for the 3 synthetic CVs ─────────────────────────
+# -- Pre-classified Documents for the 3 synthetic CVs -------------------------
 
 _CATEGORY_MAP = {
     "identity":              "personal_information",
@@ -87,47 +92,47 @@ def _doc(candidate_id: str, subcategory: str, content: str, idx: int) -> Documen
     )
 
 
-# Alice Johnson — 9 docs (covers all 9 CV-present subcategories)
+# Alice Johnson -- 9 docs (covers all 9 CV-present subcategories)
 ALICE_DOCS = [
     _doc("alice", "identity",              "Alice Marie Johnson, DOB 14 March 1991, British, NI AB 12 34 56 C", 0),
     _doc("alice", "contact_details",       "alice.johnson@securepro.co.uk | +44 7911 234567 | linkedin.com/in/alicejohnson-security", 1),
-    _doc("alice", "employment_history",    "Senior Security Engineer at CyberDefense Corp, London, Jan 2020–Present. Previously SecureOps Ltd and StartupSec Ltd.", 2),
+    _doc("alice", "employment_history",    "Senior Security Engineer at CyberDefense Corp, London, Jan 2020-Present. Previously SecureOps Ltd and StartupSec Ltd.", 2),
     _doc("alice", "skills_and_tools",      "Python, Splunk, SIEM, IDS/IPS, Burp Suite, Metasploit, MITRE ATT&CK, NIST CSF, ISO 27001", 3),
     _doc("alice", "references",            "Dr Sarah Chen, CISO at CyberDefense Corp. Marcus Webb, Head of Security at SecureOps Ltd.", 4),
-    _doc("alice", "academic_degrees",      "BSc Computer Science First Class Honours, University College London, 2011–2014", 5),
+    _doc("alice", "academic_degrees",      "BSc Computer Science First Class Honours, University College London, 2011-2014", 5),
     _doc("alice", "certifications_training", "CISSP (ISC2 2018), CEH (EC-Council 2017), AWS Certified Security Specialty (2021)", 6),
-    _doc("alice", "salary_expectation",    "Expected GBP 95,000–110,000 per annum plus equity stake and private health", 7),
+    _doc("alice", "salary_expectation",    "Expected GBP 95,000-110,000 per annum plus equity stake and private health", 7),
     _doc("alice", "current_compensation",  "Current Salary GBP 88,000 base plus GBP 8,000 annual performance bonus", 8),
 ]
 
-# Bob Martinez — 7 docs (NO current_compensation, NO references — first job)
+# Bob Martinez -- 7 docs (NO current_compensation, NO references -- first job)
 BOB_DOCS = [
     _doc("bob", "identity",              "Roberto Carlos Martinez, DOB 22 July 2002, Spanish / British Resident", 0),
     _doc("bob", "contact_details",       "bob.martinez.dev@gmail.com | +44 7823 456789 | github.com/bobmartinez-devops", 1),
-    _doc("bob", "employment_history",    "DevOps Intern CloudBase Inc Manchester Jun–Dec 2024. Part-time IT Support University of Manchester 2022–2024.", 2),
+    _doc("bob", "employment_history",    "DevOps Intern CloudBase Inc Manchester Jun-Dec 2024. Part-time IT Support University of Manchester 2022-2024.", 2),
     _doc("bob", "skills_and_tools",      "Docker, Kubernetes EKS, Terraform, GitHub Actions, AWS EC2 S3 RDS, Prometheus, Grafana, Linux", 3),
-    _doc("bob", "academic_degrees",      "BSc Software Engineering 2:1 University of Manchester 2021–2025, GPA 3.7", 4),
+    _doc("bob", "academic_degrees",      "BSc Software Engineering 2:1 University of Manchester 2021-2025, GPA 3.7", 4),
     _doc("bob", "certifications_training", "AWS Certified Cloud Practitioner 2024, HashiCorp Certified Terraform Associate 003 2024", 5),
-    _doc("bob", "salary_expectation",    "Expected GBP 42,000–48,000 per annum. First full-time position, no current salary to disclose.", 6),
+    _doc("bob", "salary_expectation",    "Expected GBP 42,000-48,000 per annum. First full-time position, no current salary to disclose.", 6),
 ]
 
-# Clara Wei — 9 docs (covers all 9 CV-present subcategories)
+# Clara Wei -- 9 docs (covers all 9 CV-present subcategories)
 CLARA_DOCS = [
     _doc("clara", "identity",              "Clara Mei-Lin Wei, DOB 5 September 1980, British-Chinese, British passport expires 2030", 0),
     _doc("clara", "contact_details",       "clara.wei@executivelevel.io | +44 7912 999888 | linkedin.com/in/clarawei-vp | Cambridge CB2 1TN", 1),
-    _doc("clara", "employment_history",    "VP of Engineering TechGiant plc London Mar 2019–Present. Director ScaleUp Technologies Edinburgh 2013–2019. Senior Architect FinTech Dynamics 2008–2013.", 2),
+    _doc("clara", "employment_history",    "VP of Engineering TechGiant plc London Mar 2019-Present. Director ScaleUp Technologies Edinburgh 2013-2019. Senior Architect FinTech Dynamics 2008-2013.", 2),
     _doc("clara", "skills_and_tools",      "Engineering management, OKR, Python, Java, Go, GCP, AWS, Kubernetes, Terraform, Kafka, Spark, BigQuery", 3),
     _doc("clara", "references",            "James Okafor, CEO TechGiant plc. Dr Priya Sharma, Independent Board Advisor and ex-CTO FinTech Dynamics.", 4),
-    _doc("clara", "academic_degrees",      "MBA Distinction London Business School 2006–2008. BSc Computer Science First Class University of Edinburgh 1999–2003.", 5),
+    _doc("clara", "academic_degrees",      "MBA Distinction London Business School 2006-2008. BSc Computer Science First Class University of Edinburgh 1999-2003.", 5),
     _doc("clara", "certifications_training", "PMP PMI 2010 renewed 2022, Google Cloud Professional Architect 2021, SAFe 5.0 Program Consultant 2019", 6),
-    _doc("clara", "salary_expectation",    "Expected GBP 180,000–210,000 base plus 20% bonus target plus RSU ESOP 0.5–1.0% over 4 years", 7),
+    _doc("clara", "salary_expectation",    "Expected GBP 180,000-210,000 base plus 20% bonus target plus RSU ESOP 0.5-1.0% over 4 years", 7),
     _doc("clara", "current_compensation",  "Current Base Salary GBP 165,000. Bonus GBP 29,700 (18% paid Q1 2025). BUPA health pension 8% company car allowance.", 8),
 ]
 
 ALL_DOCS = ALICE_DOCS + BOB_DOCS + CLARA_DOCS  # 9 + 7 + 9 = 25 total
 
 
-# ── Module-scoped fixtures ─────────────────────────────────────────────────────
+# -- Module-scoped fixtures ---------------------------------------------------
 
 @pytest.fixture(scope="module")
 def policy_engine():
@@ -138,18 +143,20 @@ def policy_engine():
 
 
 @pytest.fixture(scope="module")
-def populated_store(tmp_path_factory, policy_engine):
-    """Real Chroma vector store populated with 25 pre-classified docs."""
+def populated_store(pinecone_api_key, pinecone_index_name, clean_pinecone_namespace, policy_engine):
+    """Real Pinecone vector store populated with 25 pre-classified docs."""
     from src.embedding.vector_store import VectorStore
 
     FilterBuilder.set_all_subcategories(policy_engine._all_subcategories)
-    chroma_dir = str(tmp_path_factory.mktemp("chroma_vector_rbac"))
     store = VectorStore(
         embeddings=_TestEmbeddings(),
-        persist_directory=chroma_dir,
-        collection_name="test_sample_cvs_rbac",
+        index_name=pinecone_index_name,
+        namespace=clean_pinecone_namespace,
+        api_key=pinecone_api_key,
     )
     store.add_documents(ALL_DOCS)
+    # Allow Pinecone to index the vectors before querying
+    time.sleep(5)
     return store
 
 
@@ -161,17 +168,18 @@ def _init_filter_builder(policy_engine):
     FilterBuilder.set_all_subcategories([])
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
+# -- Helper --------------------------------------------------------------------
 
 def _search(store, role_filter: dict, k: int = 50):
-    """Convenience wrapper — k=50 retrieves all 25 docs regardless of similarity."""
+    """Convenience wrapper -- k=50 retrieves all 25 docs regardless of similarity."""
     return store.similarity_search("candidate profile query", role_filter, k=k)
 
 
-# ── hr_manager tests ───────────────────────────────────────────────────────────
+# -- hr_manager tests ----------------------------------------------------------
 
+@requires_pinecone
 def test_hr_manager_retrieves_all_docs(populated_store, policy_engine):
-    """hr_manager wildcard → empty filter → all 25 documents returned."""
+    """hr_manager wildcard -> empty filter -> all 25 documents returned."""
     allowed = policy_engine.get_allowed_subcategories("hr_manager")
     role_filter = FilterBuilder.build(allowed)
     assert role_filter == {}, "hr_manager should produce an empty (no-restriction) filter"
@@ -182,6 +190,7 @@ def test_hr_manager_retrieves_all_docs(populated_store, policy_engine):
     )
 
 
+@requires_pinecone
 def test_hr_manager_sees_all_three_candidates(populated_store, policy_engine):
     """hr_manager must see documents from alice, bob, and clara."""
     allowed = policy_engine.get_allowed_subcategories("hr_manager")
@@ -190,8 +199,9 @@ def test_hr_manager_sees_all_three_candidates(populated_store, policy_engine):
     assert candidates == {"alice", "bob", "clara"}
 
 
-# ── technical_interviewer tests ────────────────────────────────────────────────
+# -- technical_interviewer tests -----------------------------------------------
 
+@requires_pinecone
 def test_technical_interviewer_sees_only_allowed_subcategories(populated_store, policy_engine):
     """Every doc returned for technical_interviewer must have an allowed subcategory."""
     allowed = set(policy_engine.get_allowed_subcategories("technical_interviewer"))
@@ -202,6 +212,7 @@ def test_technical_interviewer_sees_only_allowed_subcategories(populated_store, 
     )
 
 
+@requires_pinecone
 def test_technical_interviewer_cannot_see_identity(populated_store, policy_engine):
     """technical_interviewer must not retrieve any 'identity' documents."""
     allowed = policy_engine.get_allowed_subcategories("technical_interviewer")
@@ -210,6 +221,7 @@ def test_technical_interviewer_cannot_see_identity(populated_store, policy_engin
     assert "identity" not in subcats, "technical_interviewer should not see 'identity'"
 
 
+@requires_pinecone
 def test_technical_interviewer_cannot_see_salary_expectation(populated_store, policy_engine):
     """technical_interviewer must not retrieve any 'salary_expectation' documents."""
     allowed = policy_engine.get_allowed_subcategories("technical_interviewer")
@@ -218,6 +230,7 @@ def test_technical_interviewer_cannot_see_salary_expectation(populated_store, po
     assert "salary_expectation" not in subcats
 
 
+@requires_pinecone
 def test_technical_interviewer_cannot_see_current_compensation(populated_store, policy_engine):
     """technical_interviewer must not retrieve any 'current_compensation' documents."""
     allowed = policy_engine.get_allowed_subcategories("technical_interviewer")
@@ -226,8 +239,9 @@ def test_technical_interviewer_cannot_see_current_compensation(populated_store, 
     assert "current_compensation" not in subcats
 
 
-# ── finance_analyst tests ──────────────────────────────────────────────────────
+# -- finance_analyst tests -----------------------------------------------------
 
+@requires_pinecone
 def test_finance_analyst_sees_only_3_subcategories(populated_store, policy_engine):
     """finance_analyst can only see identity, salary_expectation, current_compensation."""
     allowed = set(policy_engine.get_allowed_subcategories("finance_analyst"))
@@ -240,6 +254,7 @@ def test_finance_analyst_sees_only_3_subcategories(populated_store, policy_engin
     )
 
 
+@requires_pinecone
 def test_finance_analyst_cannot_see_employment_history(populated_store, policy_engine):
     """finance_analyst must not retrieve any 'employment_history' documents."""
     allowed = policy_engine.get_allowed_subcategories("finance_analyst")
@@ -248,6 +263,7 @@ def test_finance_analyst_cannot_see_employment_history(populated_store, policy_e
     assert "employment_history" not in subcats
 
 
+@requires_pinecone
 def test_finance_analyst_cannot_see_skills_and_tools(populated_store, policy_engine):
     """finance_analyst must not retrieve any 'skills_and_tools' documents."""
     allowed = policy_engine.get_allowed_subcategories("finance_analyst")
@@ -256,8 +272,9 @@ def test_finance_analyst_cannot_see_skills_and_tools(populated_store, policy_eng
     assert "skills_and_tools" not in subcats
 
 
-# ── recruiter tests ────────────────────────────────────────────────────────────
+# -- recruiter tests -----------------------------------------------------------
 
+@requires_pinecone
 def test_recruiter_sees_exactly_7_subcategories(populated_store, policy_engine):
     """recruiter has 7 allowed subcategories; every returned doc must be within them."""
     allowed = policy_engine.get_allowed_subcategories("recruiter")
@@ -269,6 +286,7 @@ def test_recruiter_sees_exactly_7_subcategories(populated_store, policy_engine):
     )
 
 
+@requires_pinecone
 def test_recruiter_cannot_see_current_compensation(populated_store, policy_engine):
     """recruiter must not retrieve any 'current_compensation' documents."""
     allowed = policy_engine.get_allowed_subcategories("recruiter")
@@ -277,6 +295,7 @@ def test_recruiter_cannot_see_current_compensation(populated_store, policy_engin
     assert "current_compensation" not in subcats
 
 
+@requires_pinecone
 def test_recruiter_cannot_see_references(populated_store, policy_engine):
     """recruiter must not retrieve any 'references' documents."""
     allowed = policy_engine.get_allowed_subcategories("recruiter")
@@ -285,8 +304,9 @@ def test_recruiter_cannot_see_references(populated_store, policy_engine):
     assert "references" not in subcats
 
 
-# ── Candidate-scoping tests ────────────────────────────────────────────────────
+# -- Candidate-scoping tests ---------------------------------------------------
 
+@requires_pinecone
 def test_candidate_scoping_returns_only_alice_docs(populated_store, policy_engine):
     """Scoped to candidate 'alice', hr_manager must only see Alice's 9 documents."""
     allowed = policy_engine.get_allowed_subcategories("hr_manager")
@@ -298,6 +318,7 @@ def test_candidate_scoping_returns_only_alice_docs(populated_store, policy_engin
     )
 
 
+@requires_pinecone
 def test_candidate_scoping_returns_only_bob_docs(populated_store, policy_engine):
     """Scoped to candidate 'bob', hr_manager must only see Bob's 7 documents."""
     allowed = policy_engine.get_allowed_subcategories("hr_manager")
@@ -309,6 +330,7 @@ def test_candidate_scoping_returns_only_bob_docs(populated_store, policy_engine)
     )
 
 
+@requires_pinecone
 def test_bob_has_no_current_compensation_docs(populated_store, policy_engine):
     """finance_analyst scoped to bob must return zero 'current_compensation' docs.
     Bob is a first-time applicant with no current salary data."""
@@ -317,13 +339,14 @@ def test_bob_has_no_current_compensation_docs(populated_store, policy_engine):
     docs = _search(populated_store, role_filter)
     subcats = [d.metadata["subcategory"] for d in docs]
     assert "current_compensation" not in subcats, (
-        "Bob has no current salary — 'current_compensation' must not appear"
+        "Bob has no current salary -- 'current_compensation' must not appear"
     )
     # Bob has identity + salary_expectation but no current_compensation
     assert "identity" in subcats
     assert "salary_expectation" in subcats
 
 
+@requires_pinecone
 def test_bob_has_no_references_docs(populated_store, policy_engine):
     """hr_manager scoped to bob must return zero 'references' docs (Bob has none)."""
     allowed = policy_engine.get_allowed_subcategories("hr_manager")
@@ -331,10 +354,11 @@ def test_bob_has_no_references_docs(populated_store, policy_engine):
     docs = _search(populated_store, role_filter)
     subcats = [d.metadata["subcategory"] for d in docs]
     assert "references" not in subcats, (
-        "Bob's CV has no references — 'references' must not appear in results"
+        "Bob's CV has no references -- 'references' must not appear in results"
     )
 
 
+@requires_pinecone
 def test_deny_all_filter_returns_zero_results(populated_store):
     """FilterBuilder.build([]) must produce a deny-all filter with zero results."""
     deny_filter = FilterBuilder.build([])

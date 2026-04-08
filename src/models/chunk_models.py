@@ -15,9 +15,13 @@ class ChunkMetadata(BaseModel):
     chunk_index: int = 0
     confidence_score: float = 1.0
     extraction_method: str = "llm_classification"
+    ingested_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+    data_lake_layer: str = "silver"
 
-    def to_chroma_metadata(self) -> dict:
-        """Convert to flat dict suitable for ChromaDB metadata storage."""
+    def to_metadata(self) -> dict:
+        """Convert to flat dict suitable for vector store metadata storage."""
         return {
             "candidate_id": self.candidate_id,
             "source_file": self.source_file,
@@ -27,6 +31,8 @@ class ChunkMetadata(BaseModel):
             "chunk_index": self.chunk_index,
             "confidence_score": self.confidence_score,
             "extraction_method": self.extraction_method,
+            "ingested_at": self.ingested_at,
+            "data_lake_layer": self.data_lake_layer,
         }
 
 

@@ -37,17 +37,6 @@ services:
       timeout: 10s
       retries: 10
 
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: securerag-chromadb
-    ports:
-      - "8001:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
-    environment:
-      IS_PERSISTENT: "TRUE"
-      ANONYMIZED_TELEMETRY: "FALSE"
-
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: securerag-kafka-ui
@@ -98,5 +87,4 @@ services:
       - monitoring
 
 volumes:
-  chroma_data:
   langfuse_postgres:

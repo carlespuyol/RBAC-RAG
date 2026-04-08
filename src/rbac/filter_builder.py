@@ -5,12 +5,12 @@ _DENY_ALL_SENTINEL = "__DENY_ALL__"
 
 class FilterBuilder:
     """
-    Translates an allowed-subcategory list into a ChromaDB-compatible metadata
+    Translates an allowed-subcategory list into a Pinecone-compatible metadata
     filter dict. This is the enforcement bridge between RBAC policy resolution
     and the vector retrieval layer.
 
-    ChromaDB where-clause syntax:
-      Single value:  {"subcategory": "employment_history"}
+    Pinecone filter syntax:
+      Single value:  {"subcategory": {"$eq": "employment_history"}}
       Multiple:      {"subcategory": {"$in": ["employment_history", "skills_and_tools"]}}
       No filter:     {}   (used for wildcard/all-access roles)
       Deny all:      {"subcategory": {"$in": ["__DENY_ALL__"]}}
@@ -26,10 +26,10 @@ class FilterBuilder:
     @staticmethod
     def build(allowed_subcategories: list[str]) -> dict:
         """
-        Build a ChromaDB metadata filter from a list of allowed subcategories.
+        Build a Pinecone metadata filter from a list of allowed subcategories.
 
         - Empty list → deny-all filter (impossible match sentinel)
-        - Single item → exact string match
+        - Single item → $eq match
         - Multiple items → $in list match
         - If allowed equals all known subcategories → empty dict (no filter = max perf)
         """
@@ -43,7 +43,7 @@ class FilterBuilder:
             return {}
 
         if len(allowed_subcategories) == 1:
-            return {"subcategory": allowed_subcategories[0]}
+            return {"subcategory": {"$eq": allowed_subcategories[0]}}
 
         return {"subcategory": {"$in": list(allowed_subcategories)}}
 
@@ -58,11 +58,11 @@ class FilterBuilder:
         base_filter = FilterBuilder.build(allowed_subcategories)
         if not base_filter:
             # Wildcard on subcategories, but still filter by candidate
-            return {"candidate_id": candidate_id}
+            return {"candidate_id": {"$eq": candidate_id}}
 
         return {
             "$and": [
                 base_filter,
-                {"candidate_id": candidate_id},
+                {"candidate_id": {"$eq": candidate_id}},
             ]
         }

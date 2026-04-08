@@ -59,8 +59,9 @@ class RolesResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     kafka_enabled: bool
-    chroma_collection: str
+    pinecone_index: str
     document_count: int
+    snowflake_connected: bool = False
     version: str = "1.0.0"
 
 
